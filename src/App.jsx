@@ -207,6 +207,7 @@ function App() {
   const [timeRailMode, setTimeRailMode] = useState('period')
   const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState(null)
+  const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null)
   const [taskForm, setTaskForm] = useState(() => getEmptyForm(getDateString()))
   const longPressTimerRef = useRef(null)
   const didLongPressRef = useRef(false)
@@ -230,6 +231,7 @@ function App() {
     () => selectedTasks.filter((task) => task.slotId === selectedSlotId),
     [selectedSlotId, selectedTasks],
   )
+  const pendingDeleteTask = tasks.find((task) => task.id === pendingDeleteTaskId)
 
   const completedCount = selectedTasks.filter((task) => task.completed).length
   const completionRate =
@@ -345,11 +347,26 @@ function App() {
     )
   }
 
-  function removeTask(taskId) {
-    setTasks((currentTasks) => currentTasks.filter((task) => task.id !== taskId))
-    if (editingTaskId === taskId) {
+  function requestDeleteTask(taskId) {
+    setPendingDeleteTaskId(taskId)
+  }
+
+  function cancelDeleteTask() {
+    setPendingDeleteTaskId(null)
+  }
+
+  function confirmDeleteTask() {
+    if (!pendingDeleteTaskId) {
+      return
+    }
+
+    setTasks((currentTasks) =>
+      currentTasks.filter((task) => task.id !== pendingDeleteTaskId),
+    )
+    if (editingTaskId === pendingDeleteTaskId) {
       closeTaskPanel()
     }
+    setPendingDeleteTaskId(null)
   }
 
   function renderTaskCard(task) {
@@ -375,7 +392,7 @@ function App() {
           className="task-delete"
           type="button"
           aria-label="删除任务"
-          onClick={() => removeTask(task.id)}
+          onClick={() => requestDeleteTask(task.id)}
         >
           ×
         </button>
@@ -604,6 +621,31 @@ function App() {
               保存
             </button>
           </form>
+        </div>
+      ) : null}
+
+      {pendingDeleteTask ? (
+        <div className="confirm-backdrop" role="presentation">
+          <section className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>删除任务？</h2>
+            <p>{pendingDeleteTask.title}</p>
+            <div className="confirm-actions">
+              <button
+                className="confirm-cancel"
+                type="button"
+                onClick={cancelDeleteTask}
+              >
+                取消
+              </button>
+              <button
+                className="confirm-delete"
+                type="button"
+                onClick={confirmDeleteTask}
+              >
+                删除
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
     </main>
