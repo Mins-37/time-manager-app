@@ -768,7 +768,6 @@ function App() {
 
             openEditPanel(task)
           }}
-          onPointerDown={(event) => beginTaskDrag(event, task)}
         >
           <span className={`task-title ${task.slotId ? 'is-scheduled' : ''}`}>
             {task.title}
@@ -777,6 +776,14 @@ function App() {
             {task.itemType === 'habit' ? '习惯 · ' : ''}
             {task.slotId ? `第 ${task.slotId} 时段` : '未安排时段'}
           </small>
+        </button>
+        <button
+          className="task-drag-handle"
+          type="button"
+          aria-label="拖动任务"
+          onPointerDown={(event) => beginTaskDrag(event, task)}
+        >
+          ⋮⋮
         </button>
         <button
           className="task-delete"
