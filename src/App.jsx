@@ -30,6 +30,7 @@ const DATE_RAIL_TOTAL_DAYS = 90
 const REFERENCE_WEEK_SUNDAY = '2026-05-24'
 const REFERENCE_WEEK_NUMBER = 12
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const DRAG_START_THRESHOLD = 8
 
 const QUADRANTS = [
   {
@@ -209,12 +210,86 @@ function App() {
   const [editingTaskId, setEditingTaskId] = useState(null)
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null)
   const [taskForm, setTaskForm] = useState(() => getEmptyForm(getDateString()))
+  const [dragState, setDragState] = useState(null)
   const longPressTimerRef = useRef(null)
   const didLongPressRef = useRef(false)
+  const didDragTaskRef = useRef(false)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks))
   }, [tasks])
+
+  useEffect(() => {
+    if (!dragState) {
+      return undefined
+    }
+
+    function getSlotIdFromPoint(x, y) {
+      return document.elementFromPoint(x, y)?.closest('[data-slot-id]')?.dataset
+        .slotId
+    }
+
+    function handlePointerMove(event) {
+      setDragState((currentDrag) => {
+        if (!currentDrag) {
+          return null
+        }
+
+        const distance = Math.hypot(
+          event.clientX - currentDrag.startX,
+          event.clientY - currentDrag.startY,
+        )
+        const isDragging =
+          currentDrag.isDragging || distance > DRAG_START_THRESHOLD
+        const overSlotId = isDragging
+          ? getSlotIdFromPoint(event.clientX, event.clientY) || null
+          : null
+
+        if (isDragging) {
+          didDragTaskRef.current = true
+        }
+
+        return {
+          ...currentDrag,
+          x: event.clientX,
+          y: event.clientY,
+          isDragging,
+          overSlotId,
+        }
+      })
+    }
+
+    function handlePointerUp() {
+      if (dragState.isDragging && dragState.overSlotId) {
+        setTasks((currentTasks) =>
+          currentTasks.map((task) =>
+            task.id === dragState.taskId
+              ? { ...task, slotId: dragState.overSlotId }
+              : task,
+          ),
+        )
+
+        if (selectedSlotId) {
+          setSelectedSlotId(dragState.overSlotId)
+        }
+      }
+
+      setDragState(null)
+      window.setTimeout(() => {
+        didDragTaskRef.current = false
+      }, 150)
+    }
+
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [dragState, selectedSlotId])
 
   const dateRail = useMemo(() => {
     return Array.from({ length: DATE_RAIL_TOTAL_DAYS }, (_, index) =>
@@ -369,6 +444,24 @@ function App() {
     setPendingDeleteTaskId(null)
   }
 
+  function beginTaskDrag(event, task) {
+    if (event.button !== 0) {
+      return
+    }
+
+    setDragState({
+      taskId: task.id,
+      title: task.title,
+      originSlotId: task.slotId,
+      startX: event.clientX,
+      startY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+      isDragging: false,
+      overSlotId: null,
+    })
+  }
+
   function renderTaskCard(task) {
     return (
       <article className={`plan-task ${task.completed ? 'is-done' : ''}`} key={task.id}>
@@ -383,9 +476,17 @@ function App() {
         <button
           className="task-card-content"
           type="button"
-          onClick={() => openEditPanel(task)}
+          onClick={() => {
+            if (didDragTaskRef.current) {
+              didDragTaskRef.current = false
+              return
+            }
+
+            openEditPanel(task)
+          }}
+          onPointerDown={(event) => beginTaskDrag(event, task)}
         >
-          <span>{task.title}</span>
+          <span className="task-title is-scheduled">{task.title}</span>
           <small>第 {task.slotId} 时段</small>
         </button>
         <button
@@ -464,8 +565,10 @@ function App() {
                   <button
                     className={`time-slot ${
                       selectedSlotId === slot.id ? 'is-selected' : ''
+                    } ${dragState?.overSlotId === slot.id ? 'is-drop-target' : ''
                     } ${timeRailMode === 'time' ? 'is-time-mode' : ''}`}
                     key={slot.id}
+                    data-slot-id={slot.id}
                     type="button"
                     onClick={() => handleSlotClick(slot.id)}
                     onPointerDown={handleSlotPointerDown}
@@ -646,6 +749,18 @@ function App() {
               </button>
             </div>
           </section>
+        </div>
+      ) : null}
+
+      {dragState?.isDragging ? (
+        <div
+          className="drag-preview"
+          style={{
+            left: dragState.x,
+            top: dragState.y,
+          }}
+        >
+          {dragState.title}
         </div>
       ) : null}
     </main>
