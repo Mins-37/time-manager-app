@@ -152,7 +152,7 @@ function normalizeTasks(savedTasks) {
         id: task.id || createId(),
         title: task.title,
         taskDate: task.taskDate || getDateString(new Date(createdAt)),
-        slotId: task.slotId || '1',
+        slotId: typeof task.slotId === 'string' ? task.slotId : '1',
         important:
           typeof task.important === 'boolean'
             ? task.important
@@ -193,7 +193,7 @@ function getEmptyForm(date) {
   return {
     title: '',
     taskDate: date,
-    slotId: '1',
+    slotId: '',
     important: true,
     urgent: false,
   }
@@ -214,6 +214,7 @@ function App() {
   const longPressTimerRef = useRef(null)
   const didLongPressRef = useRef(false)
   const didDragTaskRef = useRef(false)
+  const dateRailRef = useRef(null)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks))
@@ -224,9 +225,13 @@ function App() {
       return undefined
     }
 
-    function getSlotIdFromPoint(x, y) {
-      return document.elementFromPoint(x, y)?.closest('[data-slot-id]')?.dataset
-        .slotId
+    function getDropTargetFromPoint(x, y) {
+      const element = document.elementFromPoint(x, y)
+      const slotId = element?.closest('[data-slot-id]')?.dataset.slotId || null
+      const quadrantId =
+        element?.closest('[data-quadrant-id]')?.dataset.quadrantId || null
+
+      return { quadrantId, slotId }
     }
 
     function handlePointerMove(event) {
@@ -241,9 +246,9 @@ function App() {
         )
         const isDragging =
           currentDrag.isDragging || distance > DRAG_START_THRESHOLD
-        const overSlotId = isDragging
-          ? getSlotIdFromPoint(event.clientX, event.clientY) || null
-          : null
+        const dropTarget = isDragging
+          ? getDropTargetFromPoint(event.clientX, event.clientY)
+          : { quadrantId: null, slotId: null }
 
         if (isDragging) {
           didDragTaskRef.current = true
@@ -254,17 +259,36 @@ function App() {
           x: event.clientX,
           y: event.clientY,
           isDragging,
-          overSlotId,
+          overQuadrantId: dropTarget.quadrantId,
+          overSlotId: dropTarget.slotId,
         }
       })
     }
 
     function handlePointerUp() {
-      if (dragState.isDragging && dragState.overSlotId) {
+      if (
+        dragState.isDragging &&
+        (dragState.overSlotId || dragState.overQuadrantId)
+      ) {
+        const targetQuadrant = QUADRANTS.find(
+          (quadrant) => quadrant.id === dragState.overQuadrantId,
+        )
+
         setTasks((currentTasks) =>
           currentTasks.map((task) =>
             task.id === dragState.taskId
-              ? { ...task, slotId: dragState.overSlotId }
+              ? {
+                  ...task,
+                  ...(dragState.overSlotId
+                    ? { slotId: dragState.overSlotId }
+                    : {}),
+                  ...(targetQuadrant
+                    ? {
+                        important: targetQuadrant.important,
+                        urgent: targetQuadrant.urgent,
+                      }
+                    : {}),
+                }
               : task,
           ),
         )
@@ -322,11 +346,21 @@ function App() {
 
   function handleDateDoubleClick(date) {
     if (date === selectedDate) {
-      selectDate(getDateString())
+      const today = getDateString()
+      selectDate(today)
+      requestAnimationFrame(() => {
+        dateRailRef.current
+          ?.querySelector(`[data-date="${today}"]`)
+          ?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'start',
+          })
+      })
     }
   }
 
-  function openCreatePanel(slotId = '1') {
+  function openCreatePanel(slotId = '') {
     setEditingTaskId(null)
     setTaskForm({ ...getEmptyForm(selectedDate), slotId })
     setIsTaskPanelOpen(true)
@@ -458,6 +492,7 @@ function App() {
       x: event.clientX,
       y: event.clientY,
       isDragging: false,
+      overQuadrantId: null,
       overSlotId: null,
     })
   }
@@ -486,8 +521,10 @@ function App() {
           }}
           onPointerDown={(event) => beginTaskDrag(event, task)}
         >
-          <span className="task-title is-scheduled">{task.title}</span>
-          <small>第 {task.slotId} 时段</small>
+          <span className={`task-title ${task.slotId ? 'is-scheduled' : ''}`}>
+            {task.title}
+          </span>
+          <small>{task.slotId ? `第 ${task.slotId} 时段` : '未安排时段'}</small>
         </button>
         <button
           className="task-delete"
@@ -516,7 +553,7 @@ function App() {
           {selectedSlotTasks.length === 0 ? (
             <div className="slot-empty">
               <p>这个时段还没有任务</p>
-              <span>用右下角加号添加，并选择第 {selectedSlot?.label} 时段。</span>
+              <span>用右下角加号添加，或把未安排任务拖到这个时段。</span>
             </div>
           ) : (
             selectedSlotTasks.map(renderTaskCard)
@@ -537,13 +574,14 @@ function App() {
   return (
     <main className="app-shell">
       <section className="phone-shell">
-        <header className="date-rail" aria-label="日期栏">
+        <header className="date-rail" aria-label="日期栏" ref={dateRailRef}>
           {dateRail.map((date) => (
             <button
               className={`date-chip ${
                 date === selectedDate ? 'is-selected' : ''
               } ${isWeekend(date) ? 'is-weekend' : ''}`}
               key={date}
+              data-date={date}
               type="button"
               onClick={() => selectDate(date)}
               onDoubleClick={() => handleDateDoubleClick(date)}
@@ -603,7 +641,15 @@ function App() {
                   )
 
                   return (
-                    <section className="quadrant" key={quadrant.id}>
+                    <section
+                      className={`quadrant ${
+                        dragState?.overQuadrantId === quadrant.id
+                          ? 'is-drop-target'
+                          : ''
+                      }`}
+                      data-quadrant-id={quadrant.id}
+                      key={quadrant.id}
+                    >
                       <div className="quadrant-heading">
                         <h2>{quadrant.title}</h2>
                         <span>{quadrant.hint}</span>
@@ -634,7 +680,7 @@ function App() {
           className="floating-add"
           type="button"
           aria-label="添加任务"
-          onClick={() => openCreatePanel(selectedSlotId || '1')}
+          onClick={() => openCreatePanel(selectedSlotId || '')}
         >
           +
         </button>
@@ -689,6 +735,7 @@ function App() {
                   value={taskForm.slotId}
                   onChange={(event) => updateTaskForm('slotId', event.target.value)}
                 >
+                  <option value="">无时段安排</option>
                   {TIME_SLOTS.map((slot) => (
                     <option key={slot.id} value={slot.id}>
                       第 {slot.label} 时段（{slot.timeLabel.replace('\n', '-')}）
