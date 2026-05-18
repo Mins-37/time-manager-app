@@ -345,6 +345,36 @@ select {
   font-size: 13px;
 }
 
+.task-stack {
+  display: grid;
+  min-width: 0;
+  padding-bottom: calc((var(--stack-size) - 1) * 14px);
+}
+
+.task-stack-label {
+  margin: 2px 0 8px;
+  color: #68706d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.task-stack-card {
+  position: relative;
+  z-index: calc(var(--stack-size) - var(--stack-index));
+  transform: translateX(calc(var(--stack-index) * 5px));
+}
+
+.task-stack-card + .task-stack-card {
+  margin-top: -38px;
+}
+
+.task-stack-card .plan-task {
+  border-color: #d5cec0;
+  box-shadow:
+    0 10px 18px rgba(45, 49, 43, 0.08),
+    0 1px 0 rgba(255, 253, 250, 0.8) inset;
+}
+
 .plan-task {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) 24px;

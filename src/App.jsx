@@ -788,6 +788,46 @@ function App() {
     )
   }
 
+  function renderTaskStack(tasksToStack) {
+    if (tasksToStack.length === 1) {
+      return renderTaskCard(tasksToStack[0])
+    }
+
+    return (
+      <div
+        className="task-stack"
+        style={{ '--stack-size': tasksToStack.length }}
+      >
+        <div className="task-stack-label">已完成 / 已安排 · {tasksToStack.length}</div>
+        {tasksToStack.map((task, index) => (
+          <div
+            className="task-stack-card"
+            key={task.renderKey}
+            style={{ '--stack-index': index }}
+          >
+            {renderTaskCard(task)}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  function renderQuadrantTasks(quadrantTasks) {
+    if (quadrantTasks.length === 0) {
+      return <p className="quadrant-empty">暂无任务</p>
+    }
+
+    const looseTasks = quadrantTasks.filter((task) => !task.completed && !task.slotId)
+    const stackedTasks = quadrantTasks.filter((task) => task.completed || task.slotId)
+
+    return (
+      <>
+        {looseTasks.map(renderTaskCard)}
+        {stackedTasks.length > 0 ? renderTaskStack(stackedTasks) : null}
+      </>
+    )
+  }
+
   function renderSlotDetail() {
     return (
       <section className="slot-detail" aria-label="时段任务详情">
@@ -906,11 +946,7 @@ function App() {
                       </div>
 
                       <div className="quadrant-tasks">
-                        {quadrantTasks.length === 0 ? (
-                          <p className="quadrant-empty">暂无任务</p>
-                        ) : (
-                          quadrantTasks.map(renderTaskCard)
-                        )}
+                        {renderQuadrantTasks(quadrantTasks)}
                       </div>
                     </section>
                   )
