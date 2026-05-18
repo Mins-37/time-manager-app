@@ -45,9 +45,9 @@ select {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   overflow-x: auto;
-  padding: 14px 28px;
+  padding: 10px 24px;
   background: #203f34;
   scrollbar-width: none;
 }
@@ -57,9 +57,14 @@ select {
 }
 
 .date-chip {
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
+  position: relative;
+  flex: 0 0 54px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+  width: 54px;
+  height: 54px;
   border: 1px solid rgba(255, 253, 250, 0.32);
   border-radius: 50%;
   background: rgba(255, 253, 250, 0.1);
@@ -67,9 +72,33 @@ select {
   cursor: pointer;
 }
 
-.date-chip span {
+.date-number {
   display: block;
   font-size: 14px;
+  line-height: 1.05;
+}
+
+.weekday-label {
+  display: block;
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.82;
+}
+
+.week-number {
+  position: absolute;
+  right: 7px;
+  bottom: 5px;
+  color: inherit;
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.78;
+}
+
+.date-chip.is-weekend {
+  border-color: rgba(224, 239, 218, 0.9);
+  background: #dfeeda;
+  color: #315b43;
 }
 
 .date-chip.is-selected {
@@ -546,7 +575,7 @@ select {
   }
 
   .date-rail {
-    padding-inline: 20px;
+    padding-inline: 18px;
   }
 
   .planner-view {

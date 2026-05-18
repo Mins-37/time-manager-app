@@ -27,6 +27,9 @@ const TABS = [
 
 const DATE_RAIL_PAST_DAYS = 21
 const DATE_RAIL_TOTAL_DAYS = 90
+const REFERENCE_WEEK_SUNDAY = '2026-05-24'
+const REFERENCE_WEEK_NUMBER = 12
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const QUADRANTS = [
   {
@@ -74,6 +77,34 @@ function shiftDate(dateString, amount) {
 function formatDateChip(dateString) {
   const [, month, day] = dateString.split('-').map(Number)
   return `${month}.${day}`
+}
+
+function parseDate(dateString) {
+  const [year, month, day] = dateString.split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function getWeekdayLabel(dateString) {
+  return WEEKDAY_LABELS[parseDate(dateString).getDay()]
+}
+
+function isWeekend(dateString) {
+  const day = parseDate(dateString).getDay()
+  return day === 0 || day === 6
+}
+
+function isSunday(dateString) {
+  return parseDate(dateString).getDay() === 0
+}
+
+function getCustomWeekNumber(dateString) {
+  const date = parseDate(dateString)
+  const referenceDate = parseDate(REFERENCE_WEEK_SUNDAY)
+  const dayDifference = Math.round(
+    (date.getTime() - referenceDate.getTime()) / 86400000,
+  )
+
+  return REFERENCE_WEEK_NUMBER + Math.round(dayDifference / 7)
 }
 
 function formatDateLabel(dateString) {
@@ -210,6 +241,12 @@ function App() {
     setSelectedDate(nextDate)
     setSelectedSlotId(null)
     setTaskForm((currentForm) => ({ ...currentForm, taskDate: nextDate }))
+  }
+
+  function handleDateDoubleClick(date) {
+    if (date === selectedDate) {
+      selectDate(getDateString())
+    }
   }
 
   function openCreatePanel(slotId = '1') {
@@ -385,12 +422,19 @@ function App() {
         <header className="date-rail" aria-label="日期栏">
           {dateRail.map((date) => (
             <button
-              className={`date-chip ${date === selectedDate ? 'is-selected' : ''}`}
+              className={`date-chip ${
+                date === selectedDate ? 'is-selected' : ''
+              } ${isWeekend(date) ? 'is-weekend' : ''}`}
               key={date}
               type="button"
               onClick={() => selectDate(date)}
+              onDoubleClick={() => handleDateDoubleClick(date)}
             >
-              <span>{formatDateChip(date)}</span>
+              <span className="date-number">{formatDateChip(date)}</span>
+              <span className="weekday-label">{getWeekdayLabel(date)}</span>
+              {isSunday(date) ? (
+                <small className="week-number">{getCustomWeekNumber(date)}</small>
+              ) : null}
             </button>
           ))}
         </header>
