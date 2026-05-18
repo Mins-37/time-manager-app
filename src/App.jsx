@@ -326,6 +326,7 @@ function App() {
   const [pendingDeleteTaskType, setPendingDeleteTaskType] = useState('task')
   const [taskForm, setTaskForm] = useState(() => getEmptyForm(getDateString()))
   const [dragState, setDragState] = useState(null)
+  const [expandedStackKey, setExpandedStackKey] = useState(null)
   const longPressTimerRef = useRef(null)
   const didLongPressRef = useRef(false)
   const didDragTaskRef = useRef(false)
@@ -475,6 +476,7 @@ function App() {
   function selectDate(nextDate) {
     setSelectedDate(nextDate)
     setSelectedSlotId(null)
+    setExpandedStackKey(null)
     setTaskForm((currentForm) => ({ ...currentForm, taskDate: nextDate }))
   }
 
@@ -788,31 +790,57 @@ function App() {
     )
   }
 
-  function renderTaskStack(tasksToStack) {
+  function renderTaskStack(tasksToStack, stackKey) {
     if (tasksToStack.length === 1) {
       return renderTaskCard(tasksToStack[0])
     }
 
+    const isExpanded = expandedStackKey === stackKey
+    const previewTasks = tasksToStack.slice(0, 4)
+
+    if (isExpanded) {
+      return (
+        <div className="task-stack is-expanded">
+          <button
+            className="task-stack-toggle"
+            type="button"
+            onClick={() => setExpandedStackKey(null)}
+          >
+            收起已完成 / 已安排 · {tasksToStack.length}
+          </button>
+          <div className="task-stack-expanded-list">
+            {tasksToStack.map(renderTaskCard)}
+          </div>
+        </div>
+      )
+    }
+
     return (
-      <div
-        className="task-stack"
+      <button
+        className="task-stack is-collapsed"
         style={{ '--stack-size': tasksToStack.length }}
+        type="button"
+        onClick={() => setExpandedStackKey(stackKey)}
       >
-        <div className="task-stack-label">已完成 / 已安排 · {tasksToStack.length}</div>
-        {tasksToStack.map((task, index) => (
+        <span className="task-stack-label">已完成 / 已安排 · {tasksToStack.length}</span>
+        {previewTasks.map((task, index) => (
           <div
             className="task-stack-card"
             key={task.renderKey}
             style={{ '--stack-index': index }}
           >
-            {renderTaskCard(task)}
+            <span>{task.title}</span>
+            <small>
+              {task.itemType === 'habit' ? '习惯 · ' : ''}
+              {task.slotId ? `第 ${task.slotId} 时段` : '已完成'}
+            </small>
           </div>
         ))}
-      </div>
+      </button>
     )
   }
 
-  function renderQuadrantTasks(quadrantTasks) {
+  function renderQuadrantTasks(quadrantTasks, quadrantId) {
     if (quadrantTasks.length === 0) {
       return <p className="quadrant-empty">暂无任务</p>
     }
@@ -823,7 +851,9 @@ function App() {
     return (
       <>
         {looseTasks.map(renderTaskCard)}
-        {stackedTasks.length > 0 ? renderTaskStack(stackedTasks) : null}
+        {stackedTasks.length > 0
+          ? renderTaskStack(stackedTasks, `${selectedDate}-${quadrantId}`)
+          : null}
       </>
     )
   }
@@ -946,7 +976,7 @@ function App() {
                       </div>
 
                       <div className="quadrant-tasks">
-                        {renderQuadrantTasks(quadrantTasks)}
+                        {renderQuadrantTasks(quadrantTasks, quadrant.id)}
                       </div>
                     </section>
                   )
