@@ -3,8 +3,11 @@
   display: grid;
   place-items: center;
   padding: 16px;
-  background: #eef1ec;
-  color: #172025;
+  background:
+    linear-gradient(135deg, rgba(81, 115, 91, 0.12), transparent 36%),
+    linear-gradient(315deg, rgba(55, 101, 135, 0.1), transparent 34%),
+    #f7f5ef;
+  color: #202326;
 }
 
 .phone-shell {
@@ -14,10 +17,21 @@
   width: min(480px, 100%);
   height: min(860px, calc(100vh - 32px));
   min-height: 640px;
-  border: 2px solid #10212a;
-  background: #f7f7f2;
+  border: 1px solid #d9d3c8;
+  border-radius: 8px;
+  background: #fffdfa;
   overflow: hidden;
-  box-shadow: 0 24px 70px rgba(22, 35, 42, 0.18);
+  box-shadow: 0 24px 70px rgba(45, 49, 43, 0.14);
+}
+
+.phone-shell::before {
+  content: '';
+  position: absolute;
+  inset: 74px 0 68px;
+  pointer-events: none;
+  background:
+    linear-gradient(135deg, rgba(81, 115, 91, 0.08), transparent 42%),
+    linear-gradient(315deg, rgba(141, 81, 73, 0.05), transparent 38%);
 }
 
 button,
@@ -27,12 +41,14 @@ select {
 }
 
 .date-rail {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 16px;
   overflow-x: auto;
   padding: 14px 28px;
-  background: #176982;
+  background: #203f34;
   scrollbar-width: none;
 }
 
@@ -44,10 +60,10 @@ select {
   flex: 0 0 44px;
   width: 44px;
   height: 44px;
-  border: 2px solid #10212a;
+  border: 1px solid rgba(255, 253, 250, 0.32);
   border-radius: 50%;
-  background: #1d7893;
-  color: #07191f;
+  background: rgba(255, 253, 250, 0.1);
+  color: #eef4ed;
   cursor: pointer;
 }
 
@@ -57,12 +73,15 @@ select {
 }
 
 .date-chip.is-selected {
-  background: #f7f7f2;
-  color: #0f3441;
+  border-color: #fffdfa;
+  background: #fffdfa;
+  color: #203f34;
   font-weight: 800;
 }
 
 .tab-content {
+  position: relative;
+  z-index: 1;
   min-height: 0;
   overflow: hidden;
 }
@@ -76,21 +95,23 @@ select {
 .time-rail {
   display: grid;
   grid-template-rows: repeat(13, 1fr);
-  background: #20a6cf;
+  border-right: 1px solid #ddd7ca;
+  background: #e7efe4;
   padding: 10px 0;
 }
 
 .time-slot {
   border: 0;
   background: transparent;
-  color: #061d25;
+  color: #315b43;
   font-size: 18px;
+  font-weight: 800;
   text-align: center;
   cursor: pointer;
 }
 
 .time-slot:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: rgba(49, 91, 67, 0.09);
 }
 
 .quadrant-board {
@@ -99,8 +120,7 @@ select {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: 48px repeat(2, minmax(0, 1fr));
   min-width: 0;
-  border-left: 2px solid #176982;
-  background: #fbfbf7;
+  background: rgba(255, 253, 250, 0.78);
 }
 
 .day-summary {
@@ -111,8 +131,8 @@ select {
   gap: 12px;
   min-width: 0;
   padding: 0 14px;
-  border-bottom: 2px solid #176982;
-  color: #24414a;
+  border-bottom: 1px solid #ddd7ca;
+  color: #203f34;
 }
 
 .day-summary strong,
@@ -123,7 +143,7 @@ select {
 }
 
 .day-summary span {
-  color: #627077;
+  color: #68706d;
   font-size: 13px;
 }
 
@@ -131,9 +151,10 @@ select {
   min-width: 0;
   min-height: 0;
   padding: 12px;
-  border-right: 2px solid #176982;
-  border-bottom: 2px solid #176982;
+  border-right: 1px solid #ddd7ca;
+  border-bottom: 1px solid #ddd7ca;
   overflow: auto;
+  background: rgba(255, 253, 250, 0.64);
 }
 
 .quadrant:nth-of-type(2n + 1) {
@@ -155,10 +176,11 @@ select {
 .quadrant-heading h2 {
   margin: 0;
   font-size: 15px;
+  color: #303330;
 }
 
 .quadrant-heading span {
-  color: #758087;
+  color: #7d827b;
   font-size: 12px;
 }
 
@@ -169,7 +191,7 @@ select {
 
 .quadrant-empty {
   margin: 18px 0 0;
-  color: #9ba3a7;
+  color: #9aa19a;
   font-size: 13px;
 }
 
@@ -179,14 +201,15 @@ select {
   gap: 6px;
   align-items: center;
   padding: 8px;
-  border: 1px solid #d7ddd7;
+  border: 1px solid #ddd7ca;
   border-radius: 7px;
-  background: #ffffff;
+  background: rgba(255, 253, 250, 0.92);
+  box-shadow: 0 8px 18px rgba(45, 49, 43, 0.05);
 }
 
 .plan-task.is-done {
-  background: #eef2eb;
-  color: #7a8581;
+  background: #f0eee7;
+  color: #787d77;
 }
 
 .task-check,
@@ -201,9 +224,9 @@ select {
 .task-check {
   width: 24px;
   height: 24px;
-  border: 2px solid #176982;
+  border: 2px solid #9aa398;
   border-radius: 50%;
-  color: #176982;
+  color: #203f34;
   font-weight: 900;
 }
 
@@ -224,7 +247,7 @@ select {
 }
 
 .task-card-content small {
-  color: #6e7d82;
+  color: #68706d;
 }
 
 .task-delete {
@@ -241,33 +264,39 @@ select {
   height: 64px;
   border: 0;
   border-radius: 50%;
-  background: #ffc1a3;
-  color: #11445a;
+  background: #f4bda2;
+  color: #203f34;
   font-size: 52px;
   line-height: 1;
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 12px 30px rgba(22, 35, 42, 0.18);
+  box-shadow: 0 12px 30px rgba(45, 49, 43, 0.16);
+}
+
+.floating-add:hover {
+  background: #efad8d;
 }
 
 .bottom-tabs {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  border-top: 2px solid #10212a;
-  background: #176982;
+  border-top: 1px solid #ddd7ca;
+  background: #203f34;
 }
 
 .bottom-tabs button {
   border: 0;
   background: transparent;
-  color: #061d25;
+  color: rgba(255, 253, 250, 0.72);
   font-size: 16px;
   cursor: pointer;
 }
 
 .bottom-tabs button.is-active {
-  background: rgba(255, 255, 255, 0.16);
-  color: #f7f7f2;
+  background: rgba(255, 253, 250, 0.12);
+  color: #fffdfa;
   font-weight: 800;
 }
 
@@ -286,7 +315,7 @@ select {
 
 .placeholder-view p {
   margin: 0;
-  color: #69767a;
+  color: #68706d;
 }
 
 .task-panel-backdrop {
@@ -296,7 +325,7 @@ select {
   display: grid;
   place-items: end center;
   padding: 16px;
-  background: rgba(10, 16, 19, 0.4);
+  background: rgba(32, 35, 38, 0.36);
 }
 
 .task-panel {
@@ -305,8 +334,9 @@ select {
   width: min(440px, 100%);
   padding: 18px;
   border-radius: 8px;
-  background: #f9faf6;
-  box-shadow: 0 18px 50px rgba(13, 20, 24, 0.24);
+  border: 1px solid #ddd7ca;
+  background: #fffdfa;
+  box-shadow: 0 18px 50px rgba(45, 49, 43, 0.2);
 }
 
 .task-panel-header {
@@ -326,8 +356,8 @@ select {
   height: 36px;
   border: 0;
   border-radius: 50%;
-  background: #edf1ec;
-  color: #364348;
+  background: #f0eee7;
+  color: #3f4843;
   cursor: pointer;
   font-size: 24px;
 }
@@ -338,7 +368,7 @@ select {
 }
 
 .field span {
-  color: #59666b;
+  color: #626a65;
   font-size: 13px;
   font-weight: 800;
 }
@@ -348,11 +378,17 @@ select {
   width: 100%;
   min-height: 46px;
   box-sizing: border-box;
-  border: 1px solid #d3d9d4;
+  border: 1px solid #d7d1c4;
   border-radius: 7px;
-  background: #ffffff;
-  color: #172025;
+  background: #fffdfa;
+  color: #202326;
   padding: 10px 12px;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: #3c6b51;
+  outline: 3px solid rgba(60, 107, 81, 0.18);
 }
 
 .form-grid {
@@ -367,9 +403,9 @@ select {
   gap: 10px;
   min-height: 46px;
   padding: 0 12px;
-  border: 1px solid #d3d9d4;
+  border: 1px solid #d7d1c4;
   border-radius: 7px;
-  background: #ffffff;
+  background: #fffdfa;
   font-weight: 800;
 }
 
@@ -382,10 +418,14 @@ select {
   min-height: 48px;
   border: 0;
   border-radius: 7px;
-  background: #176982;
+  background: #203f34;
   color: #ffffff;
   font-weight: 900;
   cursor: pointer;
+}
+
+.panel-save:hover {
+  background: #2c5948;
 }
 
 @media (max-width: 520px) {
