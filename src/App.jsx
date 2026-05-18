@@ -24,6 +24,27 @@ const FILTERS = [
   { value: 'completed', label: '已完成' },
 ]
 
+function getDateString(date = new Date()) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+  return localDate.toISOString().slice(0, 10)
+}
+
+function shiftDate(dateString, amount) {
+  const [year, month, day] = dateString.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + amount)
+  return getDateString(date)
+}
+
+function formatDateLabel(dateString) {
+  const [year, month, day] = dateString.split('-').map(Number)
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  }).format(new Date(year, month - 1, day))
+}
+
 function createId() {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID()
@@ -32,10 +53,11 @@ function createId() {
   return `task-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-function createTask(title, dueTime, priority) {
+function createTask(title, taskDate, dueTime, priority) {
   return {
     id: createId(),
     title: title.trim(),
+    taskDate,
     dueTime,
     priority,
     completed: false,
@@ -51,15 +73,20 @@ function normalizeTasks(savedTasks) {
 
   return savedTasks
     .filter((task) => task && typeof task.title === 'string')
-    .map((task) => ({
-      id: task.id || createId(),
-      title: task.title,
-      dueTime: task.dueTime || '09:00',
-      priority: PRIORITIES[task.priority] ? task.priority : 'medium',
-      completed: Boolean(task.completed),
-      createdAt: task.createdAt || new Date().toISOString(),
-      completedAt: task.completedAt || null,
-    }))
+    .map((task) => {
+      const createdAt = task.createdAt || new Date().toISOString()
+
+      return {
+        id: task.id || createId(),
+        title: task.title,
+        taskDate: task.taskDate || getDateString(new Date(createdAt)),
+        dueTime: task.dueTime || '09:00',
+        priority: PRIORITIES[task.priority] ? task.priority : 'medium',
+        completed: Boolean(task.completed),
+        createdAt,
+        completedAt: task.completedAt || null,
+      }
+    })
 }
 
 function loadTasks() {
@@ -74,6 +101,8 @@ function loadTasks() {
 function App() {
   const [tasks, setTasks] = useState(loadTasks)
   const [title, setTitle] = useState('')
+  const [selectedDate, setSelectedDate] = useState(getDateString)
+  const [taskDate, setTaskDate] = useState(getDateString)
   const [dueTime, setDueTime] = useState('09:00')
   const [priority, setPriority] = useState('medium')
   const [filter, setFilter] = useState('all')
@@ -82,13 +111,21 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks))
   }, [tasks])
 
-  const completedCount = tasks.filter((task) => task.completed).length
-  const activeCount = tasks.length - completedCount
+  const selectedDateTasks = useMemo(
+    () => tasks.filter((task) => task.taskDate === selectedDate),
+    [selectedDate, tasks],
+  )
+  const completedCount = selectedDateTasks.filter((task) => task.completed).length
+  const activeCount = selectedDateTasks.length - completedCount
   const completionRate =
-    tasks.length === 0 ? 0 : Math.round((completedCount / tasks.length) * 100)
+    selectedDateTasks.length === 0
+      ? 0
+      : Math.round((completedCount / selectedDateTasks.length) * 100)
+  const selectedDateLabel = formatDateLabel(selectedDate)
+  const isViewingToday = selectedDate === getDateString()
 
   const visibleTasks = useMemo(() => {
-    return tasks
+    return selectedDateTasks
       .filter((task) => {
         if (filter === 'completed') {
           return task.completed
@@ -107,7 +144,7 @@ function App() {
 
         return a.dueTime.localeCompare(b.dueTime)
       })
-  }, [filter, tasks])
+  }, [filter, selectedDateTasks])
 
   function handleSubmit(event) {
     event.preventDefault()
@@ -118,10 +155,16 @@ function App() {
 
     setTasks((currentTasks) => [
       ...currentTasks,
-      createTask(title, dueTime, priority),
+      createTask(title, taskDate, dueTime, priority),
     ])
     setTitle('')
     setPriority('medium')
+    setSelectedDate(taskDate)
+  }
+
+  function selectDate(nextDate) {
+    setSelectedDate(nextDate)
+    setTaskDate(nextDate)
   }
 
   function toggleTask(taskId) {
@@ -145,7 +188,11 @@ function App() {
   }
 
   function clearCompletedTasks() {
-    setTasks((currentTasks) => currentTasks.filter((task) => !task.completed))
+    setTasks((currentTasks) =>
+      currentTasks.filter(
+        (task) => task.taskDate !== selectedDate || !task.completed,
+      ),
+    )
   }
 
   return (
@@ -154,9 +201,9 @@ function App() {
         <header className="app-header">
           <p className="eyebrow">私人时间管理</p>
           <div>
-            <h1>今日待办</h1>
+            <h1>{isViewingToday ? '今日待办' : '日程清单'}</h1>
             <p className="subtitle">
-              写下任务，约定完成时间，按缓急分类，做完后亲手划掉。
+              {selectedDateLabel}，写下任务，约定完成时间，按缓急分类。
             </p>
           </div>
         </header>
@@ -169,6 +216,15 @@ function App() {
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="例如：整理今天的学习计划"
+            />
+          </label>
+
+          <label className="field date-field">
+            <span>任务日期</span>
+            <input
+              type="date"
+              value={taskDate}
+              onChange={(event) => setTaskDate(event.target.value)}
             />
           </label>
 
@@ -200,10 +256,45 @@ function App() {
           </button>
         </form>
 
-        <section className="summary" aria-label="今日完成情况">
+        <section className="date-panel" aria-label="日期切换">
+          <button
+            className="date-step-button"
+            type="button"
+            onClick={() => selectDate(shiftDate(selectedDate, -1))}
+          >
+            前一天
+          </button>
+
+          <label className="date-picker">
+            <span>查看日期</span>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => selectDate(event.target.value)}
+            />
+          </label>
+
+          <button
+            className="today-button"
+            type="button"
+            onClick={() => selectDate(getDateString())}
+          >
+            今天
+          </button>
+
+          <button
+            className="date-step-button"
+            type="button"
+            onClick={() => selectDate(shiftDate(selectedDate, 1))}
+          >
+            后一天
+          </button>
+        </section>
+
+        <section className="summary" aria-label="当前日期完成情况">
           <div>
-            <span className="summary-value">{tasks.length}</span>
-            <span className="summary-label">全部任务</span>
+            <span className="summary-value">{selectedDateTasks.length}</span>
+            <span className="summary-label">当天任务</span>
           </div>
           <div>
             <span className="summary-value">{activeCount}</span>
@@ -245,7 +336,7 @@ function App() {
           {visibleTasks.length === 0 ? (
             <div className="empty-state">
               <p>这里暂时没有任务</p>
-              <span>从第一件最想完成的小事开始。</span>
+              <span>给 {selectedDateLabel} 安排一件想完成的小事。</span>
             </div>
           ) : (
             visibleTasks.map((task) => {

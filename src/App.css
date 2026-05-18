@@ -43,7 +43,7 @@ h1 {
 
 .task-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 160px 120px 104px;
+  grid-template-columns: minmax(0, 1fr) 150px 140px 120px 104px;
   gap: 12px;
   padding: 16px;
   border: 1px solid #ddd7ca;
@@ -95,6 +95,11 @@ input[type='time'] {
   padding: 10px 12px;
 }
 
+input[type='date'] {
+  min-height: 50px;
+  padding: 10px 12px;
+}
+
 input:focus,
 select:focus {
   border-color: #3c6b51;
@@ -125,6 +130,56 @@ button {
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin: 18px 0;
+}
+
+.date-panel {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 80px 96px;
+  gap: 10px;
+  align-items: end;
+  margin: 16px 0 0;
+  padding: 12px;
+  border: 1px solid #ddd7ca;
+  border-radius: 8px;
+  background: rgba(255, 252, 245, 0.64);
+}
+
+.date-picker {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.date-picker span {
+  font-size: 13px;
+  font-weight: 700;
+  color: #626a65;
+}
+
+.date-step-button,
+.today-button {
+  min-height: 50px;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.date-step-button {
+  border: 1px solid #d7d1c4;
+  background: #fffdfa;
+  color: #3f4843;
+}
+
+.date-step-button:hover,
+.today-button:hover {
+  border-color: #b9c7b8;
+  background: #eef4ed;
+}
+
+.today-button {
+  border: 1px solid #203f34;
+  background: #203f34;
+  color: #fff;
 }
 
 .summary div {
@@ -358,7 +413,8 @@ button {
   }
 
   .task-form,
-  .summary {
+  .summary,
+  .date-panel {
     grid-template-columns: 1fr;
   }
 
