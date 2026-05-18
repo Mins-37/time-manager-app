@@ -25,6 +25,9 @@ const TABS = [
   { id: 'reward', label: '奖励/惩罚' },
 ]
 
+const DATE_RAIL_PAST_DAYS = 21
+const DATE_RAIL_TOTAL_DAYS = 90
+
 const QUADRANTS = [
   {
     id: 'important-urgent',
@@ -167,6 +170,7 @@ function getEmptyForm(date) {
 function App() {
   const [tasks, setTasks] = useState(loadTasks)
   const [selectedDate, setSelectedDate] = useState(getDateString)
+  const [dateRailAnchor] = useState(getDateString)
   const [activeTab, setActiveTab] = useState('plan')
   const [selectedSlotId, setSelectedSlotId] = useState(null)
   const [timeRailMode, setTimeRailMode] = useState('period')
@@ -181,8 +185,10 @@ function App() {
   }, [tasks])
 
   const dateRail = useMemo(() => {
-    return Array.from({ length: 12 }, (_, index) => shiftDate(selectedDate, index - 3))
-  }, [selectedDate])
+    return Array.from({ length: DATE_RAIL_TOTAL_DAYS }, (_, index) =>
+      shiftDate(dateRailAnchor, index - DATE_RAIL_PAST_DAYS),
+    )
+  }, [dateRailAnchor])
 
   const selectedTasks = useMemo(
     () => tasks.filter((task) => task.taskDate === selectedDate),
