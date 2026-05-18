@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 const STORAGE_KEY = 'time-manager-tasks'
+const HABIT_STORAGE_KEY = 'time-manager-habits'
+const COIN_STORAGE_KEY = 'time-manager-coins'
+const COINS_PER_COMPLETION = 1
 
 const TIME_SLOTS = [
   { id: '1', label: '1', timeLabel: '8:00\n8:45' },
@@ -30,6 +33,15 @@ const DATE_RAIL_TOTAL_DAYS = 90
 const REFERENCE_WEEK_SUNDAY = '2026-05-24'
 const REFERENCE_WEEK_NUMBER = 12
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const WEEKDAY_OPTIONS = [
+  { value: 0, label: '周日' },
+  { value: 1, label: '周一' },
+  { value: 2, label: '周二' },
+  { value: 3, label: '周三' },
+  { value: 4, label: '周四' },
+  { value: 5, label: '周五' },
+  { value: 6, label: '周六' },
+]
 const DRAG_START_THRESHOLD = 8
 
 const QUADRANTS = [
@@ -162,6 +174,44 @@ function normalizeTasks(savedTasks) {
         completed: Boolean(task.completed),
         createdAt,
         completedAt: task.completedAt || null,
+        rewardedAt: task.rewardedAt || null,
+      }
+    })
+}
+
+function normalizeHabits(savedHabits) {
+  if (!Array.isArray(savedHabits)) {
+    return []
+  }
+
+  return savedHabits
+    .filter((habit) => habit && typeof habit.title === 'string')
+    .map((habit) => {
+      const fallbackQuadrant = priorityToQuadrant(habit.priority)
+      const weekdays = Array.isArray(habit.weekdays)
+        ? habit.weekdays
+            .map(Number)
+            .filter((weekday) => weekday >= 0 && weekday <= 6)
+        : WEEKDAY_OPTIONS.map((weekday) => weekday.value)
+
+      return {
+        id: habit.id || createId(),
+        title: habit.title,
+        slotId: typeof habit.slotId === 'string' ? habit.slotId : '',
+        important:
+          typeof habit.important === 'boolean'
+            ? habit.important
+            : fallbackQuadrant.important,
+        urgent:
+          typeof habit.urgent === 'boolean' ? habit.urgent : fallbackQuadrant.urgent,
+        weekdays: [...new Set(weekdays)].sort((a, b) => a - b),
+        completedDates: Array.isArray(habit.completedDates)
+          ? habit.completedDates.filter((date) => typeof date === 'string')
+          : [],
+        rewardedDates: Array.isArray(habit.rewardedDates)
+          ? habit.rewardedDates.filter((date) => typeof date === 'string')
+          : [],
+        createdAt: habit.createdAt || new Date().toISOString(),
       }
     })
 }
@@ -172,6 +222,24 @@ function loadTasks() {
     return savedTasks ? normalizeTasks(JSON.parse(savedTasks)) : []
   } catch {
     return []
+  }
+}
+
+function loadHabits() {
+  try {
+    const savedHabits = localStorage.getItem(HABIT_STORAGE_KEY)
+    return savedHabits ? normalizeHabits(JSON.parse(savedHabits)) : []
+  } catch {
+    return []
+  }
+}
+
+function loadCoins() {
+  try {
+    const savedCoins = Number(localStorage.getItem(COIN_STORAGE_KEY))
+    return Number.isFinite(savedCoins) && savedCoins >= 0 ? savedCoins : 0
+  } catch {
+    return 0
   }
 }
 
@@ -186,6 +254,21 @@ function createTask(form) {
     completed: false,
     createdAt: new Date().toISOString(),
     completedAt: null,
+    rewardedAt: null,
+  }
+}
+
+function createHabit(form) {
+  return {
+    id: createId(),
+    title: form.title.trim(),
+    slotId: form.slotId,
+    important: form.important,
+    urgent: form.urgent,
+    weekdays: [...form.weekdays].sort((a, b) => a - b),
+    completedDates: [],
+    rewardedDates: [],
+    createdAt: new Date().toISOString(),
   }
 }
 
@@ -196,19 +279,51 @@ function getEmptyForm(date) {
     slotId: '',
     important: true,
     urgent: false,
+    weekdays: WEEKDAY_OPTIONS.map((weekday) => weekday.value),
+  }
+}
+
+function createHabitInstance(habit, date) {
+  const completed = habit.completedDates.includes(date)
+
+  return {
+    ...habit,
+    itemType: 'habit',
+    renderKey: `habit-${habit.id}-${date}`,
+    taskDate: date,
+    completed,
+    completedAt: completed ? date : null,
+  }
+}
+
+function createTaskInstance(task) {
+  return {
+    ...task,
+    itemType: 'task',
+    renderKey: task.id,
+  }
+}
+
+function vibrateOnComplete() {
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    navigator.vibrate(18)
   }
 }
 
 function App() {
   const [tasks, setTasks] = useState(loadTasks)
+  const [habits, setHabits] = useState(loadHabits)
+  const [coins, setCoins] = useState(loadCoins)
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [dateRailAnchor] = useState(getDateString)
   const [activeTab, setActiveTab] = useState('plan')
   const [selectedSlotId, setSelectedSlotId] = useState(null)
   const [timeRailMode, setTimeRailMode] = useState('period')
   const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false)
+  const [taskPanelMode, setTaskPanelMode] = useState('task')
   const [editingTaskId, setEditingTaskId] = useState(null)
   const [pendingDeleteTaskId, setPendingDeleteTaskId] = useState(null)
+  const [pendingDeleteTaskType, setPendingDeleteTaskType] = useState('task')
   const [taskForm, setTaskForm] = useState(() => getEmptyForm(getDateString()))
   const [dragState, setDragState] = useState(null)
   const longPressTimerRef = useRef(null)
@@ -219,6 +334,14 @@ function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks))
   }, [tasks])
+
+  useEffect(() => {
+    localStorage.setItem(HABIT_STORAGE_KEY, JSON.stringify(habits))
+  }, [habits])
+
+  useEffect(() => {
+    localStorage.setItem(COIN_STORAGE_KEY, String(coins))
+  }, [coins])
 
   useEffect(() => {
     if (!dragState) {
@@ -274,26 +397,27 @@ function App() {
           (quadrant) => quadrant.id === dragState.overQuadrantId,
         )
 
-        setTasks((currentTasks) =>
-          currentTasks.map((task) =>
-            task.id === dragState.taskId
-              ? {
-                  ...task,
-                  ...(dragState.overSlotId
-                    ? { slotId: dragState.overSlotId }
-                    : {}),
-                  ...(targetQuadrant
-                    ? {
-                        important: targetQuadrant.important,
-                        urgent: targetQuadrant.urgent,
-                      }
-                    : {}),
-                }
-              : task,
-          ),
-        )
+        const updateDraggedItem = (item) =>
+          item.id === dragState.taskId
+            ? {
+                ...item,
+                ...(dragState.overSlotId ? { slotId: dragState.overSlotId } : {}),
+                ...(targetQuadrant
+                  ? {
+                      important: targetQuadrant.important,
+                      urgent: targetQuadrant.urgent,
+                    }
+                  : {}),
+              }
+            : item
 
-        if (selectedSlotId) {
+        if (dragState.itemType === 'habit') {
+          setHabits((currentHabits) => currentHabits.map(updateDraggedItem))
+        } else {
+          setTasks((currentTasks) => currentTasks.map(updateDraggedItem))
+        }
+
+        if (selectedSlotId && dragState.overSlotId) {
           setSelectedSlotId(dragState.overSlotId)
         }
       }
@@ -321,16 +445,26 @@ function App() {
     )
   }, [dateRailAnchor])
 
-  const selectedTasks = useMemo(
-    () => tasks.filter((task) => task.taskDate === selectedDate),
-    [selectedDate, tasks],
-  )
+  const selectedTasks = useMemo(() => {
+    const weekday = parseDate(selectedDate).getDay()
+    const dailyTasks = tasks
+      .filter((task) => task.taskDate === selectedDate)
+      .map(createTaskInstance)
+    const habitTasks = habits
+      .filter((habit) => habit.weekdays.includes(weekday))
+      .map((habit) => createHabitInstance(habit, selectedDate))
+
+    return [...dailyTasks, ...habitTasks]
+  }, [habits, selectedDate, tasks])
   const selectedSlot = TIME_SLOTS.find((slot) => slot.id === selectedSlotId)
   const selectedSlotTasks = useMemo(
     () => selectedTasks.filter((task) => task.slotId === selectedSlotId),
     [selectedSlotId, selectedTasks],
   )
-  const pendingDeleteTask = tasks.find((task) => task.id === pendingDeleteTaskId)
+  const pendingDeleteTask =
+    pendingDeleteTaskType === 'habit'
+      ? habits.find((habit) => habit.id === pendingDeleteTaskId)
+      : tasks.find((task) => task.id === pendingDeleteTaskId)
 
   const completedCount = selectedTasks.filter((task) => task.completed).length
   const completionRate =
@@ -361,9 +495,16 @@ function App() {
   }
 
   function openCreatePanel(slotId = '') {
+    setTaskPanelMode('task')
     setEditingTaskId(null)
     setTaskForm({ ...getEmptyForm(selectedDate), slotId })
     setIsTaskPanelOpen(true)
+  }
+
+  function switchTaskPanelMode(nextMode) {
+    setTaskPanelMode(nextMode)
+    setEditingTaskId(null)
+    setTaskForm({ ...getEmptyForm(selectedDate), slotId: selectedSlotId || '' })
   }
 
   function handleSlotPointerDown() {
@@ -391,6 +532,7 @@ function App() {
   }
 
   function openEditPanel(task) {
+    setTaskPanelMode(task.itemType)
     setEditingTaskId(task.id)
     setTaskForm({
       title: task.title,
@@ -398,6 +540,7 @@ function App() {
       slotId: task.slotId,
       important: task.important,
       urgent: task.urgent,
+      weekdays: task.weekdays || WEEKDAY_OPTIONS.map((weekday) => weekday.value),
     })
     setIsTaskPanelOpen(true)
   }
@@ -405,11 +548,25 @@ function App() {
   function closeTaskPanel() {
     setIsTaskPanelOpen(false)
     setEditingTaskId(null)
+    setTaskPanelMode('task')
     setTaskForm(getEmptyForm(selectedDate))
   }
 
   function updateTaskForm(field, value) {
     setTaskForm((currentForm) => ({ ...currentForm, [field]: value }))
+  }
+
+  function toggleHabitWeekday(weekday) {
+    setTaskForm((currentForm) => {
+      const nextWeekdays = currentForm.weekdays.includes(weekday)
+        ? currentForm.weekdays.filter((currentWeekday) => currentWeekday !== weekday)
+        : [...currentForm.weekdays, weekday]
+
+      return {
+        ...currentForm,
+        weekdays: nextWeekdays.sort((a, b) => a - b),
+      }
+    })
   }
 
   function saveTask(event) {
@@ -419,21 +576,44 @@ function App() {
       return
     }
 
+    if (taskPanelMode === 'habit' && taskForm.weekdays.length === 0) {
+      return
+    }
+
     if (editingTaskId) {
-      setTasks((currentTasks) =>
-        currentTasks.map((task) =>
-          task.id === editingTaskId
-            ? {
-                ...task,
-                title: taskForm.title.trim(),
-                taskDate: taskForm.taskDate,
-                slotId: taskForm.slotId,
-                important: taskForm.important,
-                urgent: taskForm.urgent,
-              }
-            : task,
-        ),
-      )
+      if (taskPanelMode === 'habit') {
+        setHabits((currentHabits) =>
+          currentHabits.map((habit) =>
+            habit.id === editingTaskId
+              ? {
+                  ...habit,
+                  title: taskForm.title.trim(),
+                  slotId: taskForm.slotId,
+                  important: taskForm.important,
+                  urgent: taskForm.urgent,
+                  weekdays: [...taskForm.weekdays].sort((a, b) => a - b),
+                }
+              : habit,
+          ),
+        )
+      } else {
+        setTasks((currentTasks) =>
+          currentTasks.map((task) =>
+            task.id === editingTaskId
+              ? {
+                  ...task,
+                  title: taskForm.title.trim(),
+                  taskDate: taskForm.taskDate,
+                  slotId: taskForm.slotId,
+                  important: taskForm.important,
+                  urgent: taskForm.urgent,
+                }
+              : task,
+          ),
+        )
+      }
+    } else if (taskPanelMode === 'habit') {
+      setHabits((currentHabits) => [...currentHabits, createHabit(taskForm)])
     } else {
       setTasks((currentTasks) => [...currentTasks, createTask(taskForm)])
     }
@@ -442,26 +622,73 @@ function App() {
     closeTaskPanel()
   }
 
-  function toggleTask(taskId) {
+  function toggleTask(task) {
+    if (task.itemType === 'habit') {
+      const shouldComplete = !task.completed
+      const shouldReward =
+        shouldComplete && !task.rewardedDates.includes(selectedDate)
+
+      if (shouldComplete) {
+        vibrateOnComplete()
+      }
+      if (shouldReward) {
+        setCoins((currentCoins) => currentCoins + COINS_PER_COMPLETION)
+      }
+
+      setHabits((currentHabits) =>
+        currentHabits.map((habit) =>
+          habit.id === task.id
+            ? {
+                ...habit,
+                completedDates: shouldComplete
+                  ? [...new Set([...habit.completedDates, selectedDate])]
+                  : habit.completedDates.filter((date) => date !== selectedDate),
+                rewardedDates: shouldReward
+                  ? [...new Set([...habit.rewardedDates, selectedDate])]
+                  : habit.rewardedDates,
+              }
+            : habit,
+        ),
+      )
+      return
+    }
+
+    const targetTask = tasks.find((currentTask) => currentTask.id === task.id)
+    const shouldComplete = targetTask && !targetTask.completed
+    const shouldReward = shouldComplete && !targetTask.rewardedAt
+
+    if (shouldComplete) {
+      vibrateOnComplete()
+    }
+    if (shouldReward) {
+      setCoins((currentCoins) => currentCoins + COINS_PER_COMPLETION)
+    }
+
     setTasks((currentTasks) =>
-      currentTasks.map((task) =>
-        task.id === taskId
+      currentTasks.map((currentTask) =>
+        currentTask.id === task.id
           ? {
-              ...task,
-              completed: !task.completed,
-              completedAt: task.completed ? null : new Date().toISOString(),
+              ...currentTask,
+              completed: !currentTask.completed,
+              completedAt: currentTask.completed ? null : new Date().toISOString(),
+              rewardedAt:
+                !currentTask.completed && !currentTask.rewardedAt
+                  ? new Date().toISOString()
+                  : currentTask.rewardedAt,
             }
-          : task,
+          : currentTask,
       ),
     )
   }
 
-  function requestDeleteTask(taskId) {
-    setPendingDeleteTaskId(taskId)
+  function requestDeleteTask(task) {
+    setPendingDeleteTaskId(task.id)
+    setPendingDeleteTaskType(task.itemType)
   }
 
   function cancelDeleteTask() {
     setPendingDeleteTaskId(null)
+    setPendingDeleteTaskType('task')
   }
 
   function confirmDeleteTask() {
@@ -469,13 +696,20 @@ function App() {
       return
     }
 
-    setTasks((currentTasks) =>
-      currentTasks.filter((task) => task.id !== pendingDeleteTaskId),
-    )
+    if (pendingDeleteTaskType === 'habit') {
+      setHabits((currentHabits) =>
+        currentHabits.filter((habit) => habit.id !== pendingDeleteTaskId),
+      )
+    } else {
+      setTasks((currentTasks) =>
+        currentTasks.filter((task) => task.id !== pendingDeleteTaskId),
+      )
+    }
     if (editingTaskId === pendingDeleteTaskId) {
       closeTaskPanel()
     }
     setPendingDeleteTaskId(null)
+    setPendingDeleteTaskType('task')
   }
 
   function beginTaskDrag(event, task) {
@@ -483,8 +717,16 @@ function App() {
       return
     }
 
+    event.preventDefault()
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+    } catch {
+      // Some browsers skip pointer capture for synthetic mouse events.
+    }
+
     setDragState({
       taskId: task.id,
+      itemType: task.itemType,
       title: task.title,
       originSlotId: task.slotId,
       startX: event.clientX,
@@ -499,12 +741,17 @@ function App() {
 
   function renderTaskCard(task) {
     return (
-      <article className={`plan-task ${task.completed ? 'is-done' : ''}`} key={task.id}>
+      <article
+        className={`plan-task ${task.completed ? 'is-done' : ''} ${
+          task.itemType === 'habit' ? 'is-habit' : ''
+        }`}
+        key={task.renderKey}
+      >
         <button
           className="task-check"
           type="button"
           aria-label={task.completed ? '标记为未完成' : '标记为完成'}
-          onClick={() => toggleTask(task.id)}
+          onClick={() => toggleTask(task)}
         >
           {task.completed ? '✓' : ''}
         </button>
@@ -524,13 +771,16 @@ function App() {
           <span className={`task-title ${task.slotId ? 'is-scheduled' : ''}`}>
             {task.title}
           </span>
-          <small>{task.slotId ? `第 ${task.slotId} 时段` : '未安排时段'}</small>
+          <small>
+            {task.itemType === 'habit' ? '习惯 · ' : ''}
+            {task.slotId ? `第 ${task.slotId} 时段` : '未安排时段'}
+          </small>
         </button>
         <button
           className="task-delete"
           type="button"
           aria-label="删除任务"
-          onClick={() => requestDeleteTask(task.id)}
+          onClick={() => requestDeleteTask(task)}
         >
           ×
         </button>
@@ -573,7 +823,7 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="phone-shell">
+      <section className={`phone-shell ${dragState?.isDragging ? 'is-dragging' : ''}`}>
         <header className="date-rail" aria-label="日期栏" ref={dateRailRef}>
           {dateRail.map((date) => (
             <button
@@ -629,7 +879,7 @@ function App() {
                 <div className="day-summary">
                   <strong>{formatDateLabel(selectedDate)}</strong>
                   <span>
-                    {selectedTasks.length} 项 · 完成率 {completionRate}%
+                    {selectedTasks.length} 项 · 完成率 {completionRate}% · 金币 {coins}
                   </span>
                 </div>
 
@@ -703,31 +953,60 @@ function App() {
         <div className="task-panel-backdrop" role="presentation">
           <form className="task-panel" onSubmit={saveTask}>
             <div className="task-panel-header">
-              <h2>{editingTaskId ? '编辑任务' : '添加任务'}</h2>
+              <h2>
+                {editingTaskId
+                  ? taskPanelMode === 'habit'
+                    ? '编辑习惯'
+                    : '编辑任务'
+                  : '添加任务'}
+              </h2>
               <button type="button" onClick={closeTaskPanel} aria-label="关闭">
                 ×
               </button>
             </div>
 
+            <div className="panel-mode-tabs" aria-label="任务类型">
+              <button
+                className={taskPanelMode === 'task' ? 'is-active' : ''}
+                type="button"
+                onClick={() => switchTaskPanelMode('task')}
+              >
+                日常
+              </button>
+              <button
+                className={taskPanelMode === 'habit' ? 'is-active' : ''}
+                type="button"
+                onClick={() => switchTaskPanelMode('habit')}
+              >
+                习惯
+              </button>
+            </div>
+
             <label className="field">
-              <span>任务</span>
+              <span>{taskPanelMode === 'habit' ? '习惯' : '任务'}</span>
               <input
                 type="text"
                 value={taskForm.title}
                 onChange={(event) => updateTaskForm('title', event.target.value)}
-                placeholder="写下这件事"
+                placeholder={
+                  taskPanelMode === 'habit' ? '例如：背单词 20 分钟' : '写下这件事'
+                }
               />
             </label>
 
             <div className="form-grid">
-              <label className="field">
-                <span>日期</span>
-                <input
-                  type="date"
-                  value={taskForm.taskDate}
-                  onChange={(event) => updateTaskForm('taskDate', event.target.value)}
-                />
-              </label>
+              {taskPanelMode === 'task' ? (
+                <label className="field">
+                  <span>日期</span>
+                  <input
+                    type="date"
+                    value={taskForm.taskDate}
+                    onChange={(event) =>
+                      updateTaskForm('taskDate', event.target.value)
+                    }
+                  />
+                </label>
+              ) : null}
 
               <label className="field">
                 <span>时段</span>
@@ -744,6 +1023,26 @@ function App() {
                 </select>
               </label>
             </div>
+
+            {taskPanelMode === 'habit' ? (
+              <fieldset className="weekday-picker">
+                <legend>重复星期</legend>
+                <div>
+                  {WEEKDAY_OPTIONS.map((weekday) => (
+                    <button
+                      className={
+                        taskForm.weekdays.includes(weekday.value) ? 'is-active' : ''
+                      }
+                      key={weekday.value}
+                      type="button"
+                      onClick={() => toggleHabitWeekday(weekday.value)}
+                    >
+                      {weekday.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
 
             <div className="form-grid">
               <label className="toggle-field">

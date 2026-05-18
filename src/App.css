@@ -34,6 +34,12 @@
     linear-gradient(315deg, rgba(141, 81, 73, 0.05), transparent 38%);
 }
 
+.phone-shell.is-dragging,
+.phone-shell.is-dragging * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 button,
 input,
 select {
@@ -356,6 +362,11 @@ select {
   color: #787d77;
 }
 
+.plan-task.is-habit {
+  border-color: #cddabf;
+  background: rgba(245, 250, 239, 0.92);
+}
+
 .task-check,
 .task-delete {
   display: grid;
@@ -384,6 +395,8 @@ select {
   text-align: left;
   cursor: pointer;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .task-card-content:active {
@@ -393,6 +406,8 @@ select {
 .task-card-content span {
   overflow-wrap: anywhere;
   font-weight: 700;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .task-title.is-scheduled {
@@ -600,6 +615,31 @@ select {
   font-size: 24px;
 }
 
+.panel-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #d7d1c4;
+  border-radius: 8px;
+  background: #f0eee7;
+}
+
+.panel-mode-tabs button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #626a65;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.panel-mode-tabs button.is-active {
+  background: #203f34;
+  color: #fffdfa;
+}
+
 .field {
   display: grid;
   gap: 7px;
@@ -633,6 +673,45 @@ select {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+.form-grid > .field:only-child {
+  grid-column: 1 / -1;
+}
+
+.weekday-picker {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.weekday-picker legend {
+  margin-bottom: 7px;
+  color: #626a65;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.weekday-picker div {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.weekday-picker button {
+  min-height: 38px;
+  border: 1px solid #d7d1c4;
+  border-radius: 7px;
+  background: #fffdfa;
+  color: #3f4843;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.weekday-picker button.is-active {
+  border-color: #203f34;
+  background: #e7efe4;
+  color: #203f34;
 }
 
 .toggle-field {
