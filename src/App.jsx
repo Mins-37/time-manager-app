@@ -106,6 +106,11 @@ function App() {
   const [dueTime, setDueTime] = useState('09:00')
   const [priority, setPriority] = useState('medium')
   const [filter, setFilter] = useState('all')
+  const [editingTaskId, setEditingTaskId] = useState(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editTaskDate, setEditTaskDate] = useState(getDateString)
+  const [editDueTime, setEditDueTime] = useState('09:00')
+  const [editPriority, setEditPriority] = useState('medium')
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks))
@@ -167,6 +172,46 @@ function App() {
     setTaskDate(nextDate)
   }
 
+  function beginEdit(task) {
+    setEditingTaskId(task.id)
+    setEditTitle(task.title)
+    setEditTaskDate(task.taskDate)
+    setEditDueTime(task.dueTime)
+    setEditPriority(task.priority)
+  }
+
+  function cancelEdit() {
+    setEditingTaskId(null)
+    setEditTitle('')
+    setEditTaskDate(getDateString())
+    setEditDueTime('09:00')
+    setEditPriority('medium')
+  }
+
+  function saveEdit(event) {
+    event.preventDefault()
+
+    if (!editTitle.trim()) {
+      return
+    }
+
+    setTasks((currentTasks) =>
+      currentTasks.map((task) =>
+        task.id === editingTaskId
+          ? {
+              ...task,
+              title: editTitle.trim(),
+              taskDate: editTaskDate,
+              dueTime: editDueTime,
+              priority: editPriority,
+            }
+          : task,
+      ),
+    )
+    selectDate(editTaskDate)
+    cancelEdit()
+  }
+
   function toggleTask(taskId) {
     setTasks((currentTasks) =>
       currentTasks.map((task) =>
@@ -185,6 +230,9 @@ function App() {
     setTasks((currentTasks) =>
       currentTasks.filter((task) => task.id !== taskId),
     )
+    if (editingTaskId === taskId) {
+      cancelEdit()
+    }
   }
 
   function clearCompletedTasks() {
@@ -341,12 +389,13 @@ function App() {
           ) : (
             visibleTasks.map((task) => {
               const priorityMeta = PRIORITIES[task.priority]
+              const isEditing = editingTaskId === task.id
 
               return (
                 <article
                   className={`task-item ${
                     task.completed ? 'is-completed' : ''
-                  }`}
+                  } ${isEditing ? 'is-editing' : ''}`}
                   key={task.id}
                 >
                   <button
@@ -361,7 +410,8 @@ function App() {
                   <button
                     className="task-content"
                     type="button"
-                    onClick={() => toggleTask(task.id)}
+                    aria-label="编辑任务"
+                    onClick={() => beginEdit(task)}
                   >
                     <time>{task.dueTime}</time>
                     <span>{task.title}</span>
@@ -378,6 +428,70 @@ function App() {
                   >
                     删除
                   </button>
+
+                  {isEditing ? (
+                    <form className="edit-form" onSubmit={saveEdit}>
+                      <label className="field edit-title-field">
+                        <span>任务</span>
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(event) => setEditTitle(event.target.value)}
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span>日期</span>
+                        <input
+                          type="date"
+                          value={editTaskDate}
+                          onChange={(event) =>
+                            setEditTaskDate(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span>时间</span>
+                        <input
+                          type="time"
+                          value={editDueTime}
+                          onChange={(event) =>
+                            setEditDueTime(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <label className="field">
+                        <span>缓急</span>
+                        <select
+                          value={editPriority}
+                          onChange={(event) =>
+                            setEditPriority(event.target.value)
+                          }
+                        >
+                          {Object.entries(PRIORITIES).map(([value, option]) => (
+                            <option key={value} value={value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <div className="edit-actions">
+                        <button className="save-button" type="submit">
+                          保存
+                        </button>
+                        <button
+                          className="cancel-button"
+                          type="button"
+                          onClick={cancelEdit}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
                 </article>
               )
             })

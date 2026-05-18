@@ -320,6 +320,16 @@ button {
   transform: scaleX(1) rotate(-2deg);
 }
 
+.task-item.is-editing {
+  align-items: start;
+  border-color: #b9c7b8;
+  box-shadow: 0 12px 30px rgba(45, 49, 43, 0.08);
+}
+
+.task-item.is-editing::after {
+  top: 36px;
+}
+
 .check-button {
   width: 36px;
   height: 36px;
@@ -403,6 +413,56 @@ button {
   background: #fbefed;
 }
 
+.edit-form {
+  z-index: 1;
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px 140px 120px;
+  gap: 12px;
+  width: 100%;
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid #ebe4d7;
+}
+
+.edit-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.save-button,
+.cancel-button {
+  min-height: 40px;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 18px;
+}
+
+.save-button {
+  border: 1px solid #203f34;
+  background: #203f34;
+  color: #fff;
+}
+
+.save-button:hover {
+  background: #2c5948;
+}
+
+.cancel-button {
+  border: 1px solid #d7d1c4;
+  background: #fffdfa;
+  color: #626a65;
+}
+
+.cancel-button:hover {
+  border-color: #dfc5c0;
+  background: #fbefed;
+  color: #8d5149;
+}
+
 @media (max-width: 700px) {
   .app-shell {
     padding: 28px 14px;
@@ -449,5 +509,15 @@ button {
   .priority-pill {
     grid-column: 2;
     justify-self: start;
+  }
+
+  .edit-form {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr;
+  }
+
+  .edit-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 }
