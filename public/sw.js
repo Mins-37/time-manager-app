@@ -1,4 +1,4 @@
-const CACHE_NAME = 'time-manager-app-v1'
+const CACHE_NAME = 'time-manager-app-v2'
 const BASE_PATH = new URL('./', self.location).pathname
 const APP_SHELL = [
   BASE_PATH,
@@ -40,17 +40,26 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse
-      }
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          const responseCopy = networkResponse.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy))
+          return networkResponse
+        })
+        .catch(() => caches.match(request).then((cachedResponse) => cachedResponse || caches.match(BASE_PATH))),
+    )
+    return
+  }
 
-      return fetch(request).then((networkResponse) => {
+  event.respondWith(
+    fetch(request)
+      .then((networkResponse) => {
         const responseCopy = networkResponse.clone()
         caches.open(CACHE_NAME).then((cache) => cache.put(request, responseCopy))
         return networkResponse
       })
-    }),
+      .catch(() => caches.match(request)),
   )
 })
