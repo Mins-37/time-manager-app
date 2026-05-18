@@ -1,12 +1,23 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 
 const STORAGE_KEY = 'time-manager-tasks'
 
-const TIME_SLOTS = Array.from({ length: 13 }, (_, index) => ({
-  id: String(index + 1),
-  label: String(index + 1),
-}))
+const TIME_SLOTS = [
+  { id: '1', label: '1', timeLabel: '8:00\n8:45' },
+  { id: '2', label: '2', timeLabel: '8:50\n9:35' },
+  { id: '3', label: '3', timeLabel: '9:50\n10:35' },
+  { id: '4', label: '4', timeLabel: '10:40\n11:25' },
+  { id: '5', label: '5', timeLabel: '11:30\n12:15' },
+  { id: '6', label: '6', timeLabel: '14:05\n14:50' },
+  { id: '7', label: '7', timeLabel: '14:55\n15:40' },
+  { id: '8', label: '8', timeLabel: '15:45\n16:30' },
+  { id: '9', label: '9', timeLabel: '16:40\n17:25' },
+  { id: '10', label: '10', timeLabel: '17:30\n18:15' },
+  { id: '11', label: '11', timeLabel: '18:30\n19:15' },
+  { id: '12', label: '12', timeLabel: '19:20\n20:00' },
+  { id: '13', label: '13', timeLabel: '20:10\n20:55' },
+]
 
 const TABS = [
   { id: 'plan', label: '当日计划' },
@@ -157,9 +168,13 @@ function App() {
   const [tasks, setTasks] = useState(loadTasks)
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [activeTab, setActiveTab] = useState('plan')
+  const [selectedSlotId, setSelectedSlotId] = useState(null)
+  const [timeRailMode, setTimeRailMode] = useState('period')
   const [isTaskPanelOpen, setIsTaskPanelOpen] = useState(false)
   const [editingTaskId, setEditingTaskId] = useState(null)
   const [taskForm, setTaskForm] = useState(() => getEmptyForm(getDateString()))
+  const longPressTimerRef = useRef(null)
+  const didLongPressRef = useRef(false)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks))
@@ -173,6 +188,11 @@ function App() {
     () => tasks.filter((task) => task.taskDate === selectedDate),
     [selectedDate, tasks],
   )
+  const selectedSlot = TIME_SLOTS.find((slot) => slot.id === selectedSlotId)
+  const selectedSlotTasks = useMemo(
+    () => selectedTasks.filter((task) => task.slotId === selectedSlotId),
+    [selectedSlotId, selectedTasks],
+  )
 
   const completedCount = selectedTasks.filter((task) => task.completed).length
   const completionRate =
@@ -182,6 +202,7 @@ function App() {
 
   function selectDate(nextDate) {
     setSelectedDate(nextDate)
+    setSelectedSlotId(null)
     setTaskForm((currentForm) => ({ ...currentForm, taskDate: nextDate }))
   }
 
@@ -189,6 +210,30 @@ function App() {
     setEditingTaskId(null)
     setTaskForm({ ...getEmptyForm(selectedDate), slotId })
     setIsTaskPanelOpen(true)
+  }
+
+  function handleSlotPointerDown() {
+    didLongPressRef.current = false
+    window.clearTimeout(longPressTimerRef.current)
+    longPressTimerRef.current = window.setTimeout(() => {
+      didLongPressRef.current = true
+      setTimeRailMode((currentMode) =>
+        currentMode === 'period' ? 'time' : 'period',
+      )
+    }, 550)
+  }
+
+  function handleSlotPointerEnd() {
+    window.clearTimeout(longPressTimerRef.current)
+  }
+
+  function handleSlotClick(slotId) {
+    if (didLongPressRef.current) {
+      didLongPressRef.current = false
+      return
+    }
+
+    setSelectedSlotId(slotId)
   }
 
   function openEditPanel(task) {
@@ -295,6 +340,39 @@ function App() {
     )
   }
 
+  function renderSlotDetail() {
+    return (
+      <section className="slot-detail" aria-label="时段任务详情">
+        <div className="slot-detail-header">
+          <div>
+            <span>第 {selectedSlot?.label} 时段</span>
+            <h2>{selectedSlot?.timeLabel.replace('\n', ' - ')}</h2>
+          </div>
+          <strong>{selectedSlotTasks.length} 项</strong>
+        </div>
+
+        <div className="slot-task-list">
+          {selectedSlotTasks.length === 0 ? (
+            <div className="slot-empty">
+              <p>这个时段还没有任务</p>
+              <span>用右下角加号添加，并选择第 {selectedSlot?.label} 时段。</span>
+            </div>
+          ) : (
+            selectedSlotTasks.map(renderTaskCard)
+          )}
+        </div>
+
+        <button
+          className="back-to-board"
+          type="button"
+          onClick={() => setSelectedSlotId(null)}
+        >
+          返回四象限
+        </button>
+      </section>
+    )
+  }
+
   return (
     <main className="app-shell">
       <section className="phone-shell">
@@ -317,17 +395,29 @@ function App() {
               <aside className="time-rail" aria-label="时间段">
                 {TIME_SLOTS.map((slot) => (
                   <button
-                    className="time-slot"
+                    className={`time-slot ${
+                      selectedSlotId === slot.id ? 'is-selected' : ''
+                    } ${timeRailMode === 'time' ? 'is-time-mode' : ''}`}
                     key={slot.id}
                     type="button"
-                    onClick={() => openCreatePanel(slot.id)}
+                    onClick={() => handleSlotClick(slot.id)}
+                    onPointerDown={handleSlotPointerDown}
+                    onPointerLeave={handleSlotPointerEnd}
+                    onPointerUp={handleSlotPointerEnd}
                   >
-                    {slot.label}
+                    {timeRailMode === 'time'
+                      ? slot.timeLabel.split('\n').map((line) => (
+                          <span key={line}>{line}</span>
+                        ))
+                      : slot.label}
                   </button>
                 ))}
               </aside>
 
-              <section className="quadrant-board" aria-label="四象限任务区">
+              {selectedSlotId ? (
+                renderSlotDetail()
+              ) : (
+                <section className="quadrant-board" aria-label="四象限任务区">
                 <div className="day-summary">
                   <strong>{formatDateLabel(selectedDate)}</strong>
                   <span>
@@ -359,7 +449,8 @@ function App() {
                     </section>
                   )
                 })}
-              </section>
+                </section>
+              )}
             </div>
           ) : (
             <section className="placeholder-view">
@@ -373,7 +464,7 @@ function App() {
           className="floating-add"
           type="button"
           aria-label="添加任务"
-          onClick={() => openCreatePanel()}
+          onClick={() => openCreatePanel(selectedSlotId || '1')}
         >
           +
         </button>
@@ -430,7 +521,7 @@ function App() {
                 >
                   {TIME_SLOTS.map((slot) => (
                     <option key={slot.id} value={slot.id}>
-                      第 {slot.label} 时段
+                      第 {slot.label} 时段（{slot.timeLabel.replace('\n', '-')}）
                     </option>
                   ))}
                 </select>

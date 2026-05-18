@@ -101,6 +101,8 @@ select {
 }
 
 .time-slot {
+  display: grid;
+  place-items: center;
   border: 0;
   background: transparent;
   color: #315b43;
@@ -108,10 +110,27 @@ select {
   font-weight: 800;
   text-align: center;
   cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
 }
 
 .time-slot:hover {
   background: rgba(49, 91, 67, 0.09);
+}
+
+.time-slot.is-selected {
+  background: rgba(49, 91, 67, 0.14);
+  color: #203f34;
+}
+
+.time-slot.is-time-mode {
+  gap: 2px;
+  font-size: 13px;
+  line-height: 1.12;
+}
+
+.time-slot.is-time-mode span {
+  display: block;
 }
 
 .quadrant-board {
@@ -121,6 +140,92 @@ select {
   grid-template-rows: 48px repeat(2, minmax(0, 1fr));
   min-width: 0;
   background: rgba(255, 253, 250, 0.78);
+}
+
+.slot-detail {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 14px;
+  background: rgba(255, 253, 250, 0.82);
+}
+
+.slot-detail-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ddd7ca;
+}
+
+.slot-detail-header span {
+  color: #68706d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.slot-detail-header h2 {
+  margin: 4px 0 0;
+  color: #203f34;
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+.slot-detail-header strong {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #e7efe4;
+  color: #315b43;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.slot-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 14px 0;
+  overflow: auto;
+}
+
+.slot-empty {
+  display: grid;
+  place-content: center;
+  min-height: 220px;
+  border: 1px dashed #c9c0b0;
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.56);
+  text-align: center;
+}
+
+.slot-empty p {
+  margin: 0 0 8px;
+  color: #303330;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.slot-empty span {
+  max-width: 240px;
+  color: #68706d;
+  font-size: 13px;
+}
+
+.back-to-board {
+  min-height: 46px;
+  border: 1px solid #203f34;
+  border-radius: 7px;
+  background: #203f34;
+  color: #fffdfa;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.back-to-board:hover {
+  background: #2c5948;
 }
 
 .day-summary {
@@ -448,8 +553,16 @@ select {
     grid-template-columns: 56px minmax(0, 1fr);
   }
 
+  .time-slot.is-time-mode {
+    font-size: 12px;
+  }
+
   .quadrant {
     padding: 10px;
+  }
+
+  .slot-detail {
+    padding: 12px;
   }
 
   .quadrant-heading {
