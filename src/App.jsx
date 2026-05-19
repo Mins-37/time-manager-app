@@ -8,19 +8,19 @@ const COIN_STORAGE_KEY = 'time-manager-coins'
 const COINS_PER_COMPLETION = 1
 
 const TIME_SLOTS = [
-  { id: '1', label: '1', timeLabel: '8:00\n8:45' },
-  { id: '2', label: '2', timeLabel: '8:50\n9:35' },
-  { id: '3', label: '3', timeLabel: '9:50\n10:35' },
-  { id: '4', label: '4', timeLabel: '10:40\n11:25' },
-  { id: '5', label: '5', timeLabel: '11:30\n12:15' },
-  { id: '6', label: '6', timeLabel: '14:05\n14:50' },
-  { id: '7', label: '7', timeLabel: '14:55\n15:40' },
-  { id: '8', label: '8', timeLabel: '15:45\n16:30' },
-  { id: '9', label: '9', timeLabel: '16:40\n17:25' },
-  { id: '10', label: '10', timeLabel: '17:30\n18:15' },
-  { id: '11', label: '11', timeLabel: '18:30\n19:15' },
-  { id: '12', label: '12', timeLabel: '19:20\n20:00' },
-  { id: '13', label: '13', timeLabel: '20:10\n20:55' },
+  { id: '1', label: '1', start: '08:00', end: '08:45', timeLabel: '8:00\n8:45' },
+  { id: '2', label: '2', start: '08:50', end: '09:35', timeLabel: '8:50\n9:35' },
+  { id: '3', label: '3', start: '09:50', end: '10:35', timeLabel: '9:50\n10:35' },
+  { id: '4', label: '4', start: '10:40', end: '11:25', timeLabel: '10:40\n11:25' },
+  { id: '5', label: '5', start: '11:30', end: '12:15', timeLabel: '11:30\n12:15' },
+  { id: '6', label: '6', start: '14:05', end: '14:50', timeLabel: '14:05\n14:50' },
+  { id: '7', label: '7', start: '14:55', end: '15:40', timeLabel: '14:55\n15:40' },
+  { id: '8', label: '8', start: '15:45', end: '16:30', timeLabel: '15:45\n16:30' },
+  { id: '9', label: '9', start: '16:40', end: '17:25', timeLabel: '16:40\n17:25' },
+  { id: '10', label: '10', start: '17:30', end: '18:15', timeLabel: '17:30\n18:15' },
+  { id: '11', label: '11', start: '18:30', end: '19:15', timeLabel: '18:30\n19:15' },
+  { id: '12', label: '12', start: '19:20', end: '20:00', timeLabel: '19:20\n20:00' },
+  { id: '13', label: '13', start: '20:10', end: '20:55', timeLabel: '20:10\n20:55' },
 ]
 
 const TABS = [
@@ -33,6 +33,7 @@ const DATE_RAIL_PAST_DAYS = 21
 const DATE_RAIL_TOTAL_DAYS = 90
 const REVIEW_PAST_WEEKS = 12
 const REVIEW_TOTAL_WEEKS = 32
+const FINAL_BREAK_END = '23:30'
 const REFERENCE_WEEK_SUNDAY = '2026-05-24'
 const REFERENCE_WEEK_NUMBER = 12
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -145,6 +146,45 @@ function formatDateLabel(dateString) {
   }).format(new Date(year, month - 1, day))
 }
 
+function timeToMinutes(time) {
+  if (typeof time !== 'string' || !time.includes(':')) {
+    return null
+  }
+
+  const [hours, minutes] = time.split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null
+  }
+
+  return hours * 60 + minutes
+}
+
+function isValidTimeRange(startTime, endTime) {
+  const start = timeToMinutes(startTime)
+  const end = timeToMinutes(endTime)
+
+  return start !== null && end !== null && end > start
+}
+
+function rangesOverlap(startA, endA, startB, endB) {
+  return startA < endB && startB < endA
+}
+
+function getBreakRangeAfterSlot(slotId) {
+  const slotIndex = TIME_SLOTS.findIndex((slot) => slot.id === slotId)
+  const slot = TIME_SLOTS[slotIndex]
+
+  if (!slot) {
+    return null
+  }
+
+  const nextSlot = TIME_SLOTS[slotIndex + 1]
+  return {
+    start: slot.end,
+    end: nextSlot?.start || FINAL_BREAK_END,
+  }
+}
+
 function createId() {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID()
@@ -181,6 +221,9 @@ function normalizeTasks(savedTasks) {
         title: task.title,
         taskDate: task.taskDate || getDateString(new Date(createdAt)),
         slotId: typeof task.slotId === 'string' ? task.slotId : '1',
+        scheduleMode: task.scheduleMode === 'time' ? 'time' : 'slot',
+        startTime: typeof task.startTime === 'string' ? task.startTime : '',
+        endTime: typeof task.endTime === 'string' ? task.endTime : '',
         important:
           typeof task.important === 'boolean'
             ? task.important
@@ -226,6 +269,9 @@ function normalizeHabits(savedHabits) {
         id: habit.id || createId(),
         title: habit.title,
         slotId: typeof habit.slotId === 'string' ? habit.slotId : '',
+        scheduleMode: habit.scheduleMode === 'time' ? 'time' : 'slot',
+        startTime: typeof habit.startTime === 'string' ? habit.startTime : '',
+        endTime: typeof habit.endTime === 'string' ? habit.endTime : '',
         important:
           typeof habit.important === 'boolean'
             ? habit.important
@@ -303,7 +349,10 @@ function createTask(form) {
     id: createId(),
     title: form.title.trim(),
     taskDate: form.taskDate,
-    slotId: form.slotId,
+    slotId: form.scheduleMode === 'slot' ? form.slotId : '',
+    scheduleMode: form.scheduleMode,
+    startTime: form.scheduleMode === 'time' ? form.startTime : '',
+    endTime: form.scheduleMode === 'time' ? form.endTime : '',
     important: form.important,
     urgent: form.urgent,
     completed: false,
@@ -317,7 +366,10 @@ function createHabit(form) {
   return {
     id: createId(),
     title: form.title.trim(),
-    slotId: form.slotId,
+    slotId: form.scheduleMode === 'slot' ? form.slotId : '',
+    scheduleMode: form.scheduleMode,
+    startTime: form.scheduleMode === 'time' ? form.startTime : '',
+    endTime: form.scheduleMode === 'time' ? form.endTime : '',
     important: form.important,
     urgent: form.urgent,
     weekdays: [...form.weekdays].sort((a, b) => a - b),
@@ -332,6 +384,9 @@ function getEmptyForm(date) {
     title: '',
     taskDate: date,
     slotId: '',
+    scheduleMode: 'slot',
+    startTime: '',
+    endTime: '',
     important: true,
     urgent: false,
     weekdays: WEEKDAY_OPTIONS.map((weekday) => weekday.value),
@@ -357,6 +412,47 @@ function createTaskInstance(task) {
     itemType: 'task',
     renderKey: task.id,
   }
+}
+
+function hasTaskSchedule(task) {
+  return (
+    (task.scheduleMode === 'time' &&
+      isValidTimeRange(task.startTime, task.endTime)) ||
+    Boolean(task.slotId)
+  )
+}
+
+function taskOverlapsRange(task, startTime, endTime) {
+  if (task.scheduleMode !== 'time' || !isValidTimeRange(task.startTime, task.endTime)) {
+    return false
+  }
+
+  return rangesOverlap(
+    timeToMinutes(task.startTime),
+    timeToMinutes(task.endTime),
+    timeToMinutes(startTime),
+    timeToMinutes(endTime),
+  )
+}
+
+function taskBelongsToSlot(task, slot) {
+  if (!slot) {
+    return false
+  }
+
+  if (task.scheduleMode === 'time') {
+    return taskOverlapsRange(task, slot.start, slot.end)
+  }
+
+  return task.slotId === slot.id
+}
+
+function getTaskScheduleLabel(task) {
+  if (task.scheduleMode === 'time' && isValidTimeRange(task.startTime, task.endTime)) {
+    return `${task.startTime}-${task.endTime}`
+  }
+
+  return task.slotId ? `第 ${task.slotId} 时段` : '未安排时段'
 }
 
 function vibrateOnComplete() {
@@ -480,7 +576,14 @@ function App() {
           item.id === dragState.taskId
             ? {
                 ...item,
-                ...(dragState.overSlotId ? { slotId: dragState.overSlotId } : {}),
+                ...(dragState.overSlotId
+                  ? {
+                      slotId: dragState.overSlotId,
+                      scheduleMode: 'slot',
+                      startTime: '',
+                      endTime: '',
+                    }
+                  : {}),
                 ...(targetQuadrant
                   ? {
                       important: targetQuadrant.important,
@@ -553,9 +656,21 @@ function App() {
       : Math.round((reviewCompletedCount / reviewTasks.length) * 100)
   const reviewText = dailyReviews[reviewDate]?.note || ''
   const selectedSlot = TIME_SLOTS.find((slot) => slot.id === selectedSlotId)
+  const selectedBreakRange = selectedSlotId
+    ? getBreakRangeAfterSlot(selectedSlotId)
+    : null
   const selectedSlotTasks = useMemo(
-    () => selectedTasks.filter((task) => task.slotId === selectedSlotId),
-    [selectedSlotId, selectedTasks],
+    () => selectedTasks.filter((task) => taskBelongsToSlot(task, selectedSlot)),
+    [selectedSlot, selectedTasks],
+  )
+  const selectedBreakTasks = useMemo(
+    () =>
+      selectedBreakRange
+        ? selectedTasks.filter((task) =>
+            taskOverlapsRange(task, selectedBreakRange.start, selectedBreakRange.end),
+          )
+        : [],
+    [selectedBreakRange, selectedTasks],
   )
   const pendingDeleteTask =
     pendingDeleteTaskType === 'habit'
@@ -594,14 +709,22 @@ function App() {
   function openCreatePanel(slotId = '') {
     setTaskPanelMode('task')
     setEditingTaskId(null)
-    setTaskForm({ ...getEmptyForm(selectedDate), slotId })
+    setTaskForm({
+      ...getEmptyForm(selectedDate),
+      slotId,
+      scheduleMode: 'slot',
+    })
     setIsTaskPanelOpen(true)
   }
 
   function switchTaskPanelMode(nextMode) {
     setTaskPanelMode(nextMode)
     setEditingTaskId(null)
-    setTaskForm({ ...getEmptyForm(selectedDate), slotId: selectedSlotId || '' })
+    setTaskForm({
+      ...getEmptyForm(selectedDate),
+      slotId: selectedSlotId || '',
+      scheduleMode: 'slot',
+    })
   }
 
   function handleSlotPointerDown() {
@@ -635,6 +758,9 @@ function App() {
       title: task.title,
       taskDate: task.taskDate,
       slotId: task.slotId,
+      scheduleMode: task.scheduleMode || 'slot',
+      startTime: task.startTime || '',
+      endTime: task.endTime || '',
       important: task.important,
       urgent: task.urgent,
       weekdays: task.weekdays || WEEKDAY_OPTIONS.map((weekday) => weekday.value),
@@ -687,6 +813,13 @@ function App() {
       return
     }
 
+    if (
+      taskForm.scheduleMode === 'time' &&
+      !isValidTimeRange(taskForm.startTime, taskForm.endTime)
+    ) {
+      return
+    }
+
     if (editingTaskId) {
       if (taskPanelMode === 'habit') {
         setHabits((currentHabits) =>
@@ -695,7 +828,11 @@ function App() {
               ? {
                   ...habit,
                   title: taskForm.title.trim(),
-                  slotId: taskForm.slotId,
+                  slotId: taskForm.scheduleMode === 'slot' ? taskForm.slotId : '',
+                  scheduleMode: taskForm.scheduleMode,
+                  startTime:
+                    taskForm.scheduleMode === 'time' ? taskForm.startTime : '',
+                  endTime: taskForm.scheduleMode === 'time' ? taskForm.endTime : '',
                   important: taskForm.important,
                   urgent: taskForm.urgent,
                   weekdays: [...taskForm.weekdays].sort((a, b) => a - b),
@@ -711,7 +848,11 @@ function App() {
                   ...task,
                   title: taskForm.title.trim(),
                   taskDate: taskForm.taskDate,
-                  slotId: taskForm.slotId,
+                  slotId: taskForm.scheduleMode === 'slot' ? taskForm.slotId : '',
+                  scheduleMode: taskForm.scheduleMode,
+                  startTime:
+                    taskForm.scheduleMode === 'time' ? taskForm.startTime : '',
+                  endTime: taskForm.scheduleMode === 'time' ? taskForm.endTime : '',
                   important: taskForm.important,
                   urgent: taskForm.urgent,
                 }
@@ -874,12 +1015,12 @@ function App() {
             openEditPanel(task)
           }}
         >
-          <span className={`task-title ${task.slotId ? 'is-scheduled' : ''}`}>
+          <span className={`task-title ${hasTaskSchedule(task) ? 'is-scheduled' : ''}`}>
             {task.title}
           </span>
           <small>
             {task.itemType === 'habit' ? '习惯 · ' : ''}
-            {task.slotId ? `第 ${task.slotId} 时段` : '未安排时段'}
+            {getTaskScheduleLabel(task)}
           </small>
         </button>
         <button
@@ -944,7 +1085,7 @@ function App() {
             <span>{task.title}</span>
             <small>
               {task.itemType === 'habit' ? '习惯 · ' : ''}
-              {task.slotId ? `第 ${task.slotId} 时段` : '已完成'}
+              {getTaskScheduleLabel(task)}
             </small>
           </div>
         ))}
@@ -957,8 +1098,12 @@ function App() {
       return <p className="quadrant-empty">暂无任务</p>
     }
 
-    const looseTasks = quadrantTasks.filter((task) => !task.completed && !task.slotId)
-    const stackedTasks = quadrantTasks.filter((task) => task.completed || task.slotId)
+    const looseTasks = quadrantTasks.filter(
+      (task) => !task.completed && !hasTaskSchedule(task),
+    )
+    const stackedTasks = quadrantTasks.filter(
+      (task) => task.completed || hasTaskSchedule(task),
+    )
 
     return (
       <>
@@ -1047,6 +1192,8 @@ function App() {
   }
 
   function renderSlotDetail() {
+    const totalSlotItems = selectedSlotTasks.length + selectedBreakTasks.length
+
     return (
       <section className="slot-detail" aria-label="时段任务详情">
         <div className="slot-detail-header">
@@ -1054,18 +1201,40 @@ function App() {
             <span>第 {selectedSlot?.label} 时段</span>
             <h2>{selectedSlot?.timeLabel.replace('\n', ' - ')}</h2>
           </div>
-          <strong>{selectedSlotTasks.length} 项</strong>
+          <strong>{totalSlotItems} 项</strong>
         </div>
 
         <div className="slot-task-list">
-          {selectedSlotTasks.length === 0 ? (
-            <div className="slot-empty">
-              <p>这个时段还没有任务</p>
-              <span>用右下角加号添加，或把未安排任务拖到这个时段。</span>
+          <section className="slot-section">
+            <div className="slot-section-title">
+              <span>本时段</span>
+              <strong>{selectedSlotTasks.length} 项</strong>
             </div>
-          ) : (
-            selectedSlotTasks.map(renderTaskCard)
-          )}
+            {selectedSlotTasks.length === 0 ? (
+              <div className="slot-empty">
+                <p>这个时段还没有任务</p>
+                <span>用右下角加号添加，或把未安排任务拖到这个时段。</span>
+              </div>
+            ) : (
+              selectedSlotTasks.map(renderTaskCard)
+            )}
+          </section>
+
+          {selectedBreakRange ? (
+            <section className="slot-section">
+              <div className="slot-section-title is-break">
+                <span>
+                  休息板块 {selectedBreakRange.start} - {selectedBreakRange.end}
+                </span>
+                <strong>{selectedBreakTasks.length} 项</strong>
+              </div>
+              {selectedBreakTasks.length === 0 ? (
+                <div className="slot-break-empty">这个间隔暂时空着</div>
+              ) : (
+                selectedBreakTasks.map(renderTaskCard)
+              )}
+            </section>
+          ) : null}
         </div>
 
         <button
@@ -1271,7 +1440,26 @@ function App() {
                   />
                 </label>
               ) : null}
+            </div>
 
+            <div className="schedule-mode-tabs" aria-label="安排方式">
+              <button
+                className={taskForm.scheduleMode === 'slot' ? 'is-active' : ''}
+                type="button"
+                onClick={() => updateTaskForm('scheduleMode', 'slot')}
+              >
+                选择时段
+              </button>
+              <button
+                className={taskForm.scheduleMode === 'time' ? 'is-active' : ''}
+                type="button"
+                onClick={() => updateTaskForm('scheduleMode', 'time')}
+              >
+                开始 / 截止
+              </button>
+            </div>
+
+            {taskForm.scheduleMode === 'slot' ? (
               <label className="field">
                 <span>时段</span>
                 <select
@@ -1281,12 +1469,33 @@ function App() {
                   <option value="">无时段安排</option>
                   {TIME_SLOTS.map((slot) => (
                     <option key={slot.id} value={slot.id}>
-                      第 {slot.label} 时段（{slot.timeLabel.replace('\n', '-')}）
+                      第 {slot.label} 时段（{slot.start}-{slot.end}）
                     </option>
                   ))}
                 </select>
               </label>
-            </div>
+            ) : (
+              <div className="form-grid">
+                <label className="field">
+                  <span>开始时间</span>
+                  <input
+                    type="time"
+                    value={taskForm.startTime}
+                    onChange={(event) =>
+                      updateTaskForm('startTime', event.target.value)
+                    }
+                  />
+                </label>
+                <label className="field">
+                  <span>截止时间</span>
+                  <input
+                    type="time"
+                    value={taskForm.endTime}
+                    onChange={(event) => updateTaskForm('endTime', event.target.value)}
+                  />
+                </label>
+              </div>
+            )}
 
             {taskPanelMode === 'habit' ? (
               <fieldset className="weekday-picker">

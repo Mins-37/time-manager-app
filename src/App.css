@@ -251,10 +251,35 @@ select {
   overflow: auto;
 }
 
+.slot-section {
+  display: grid;
+  gap: 8px;
+}
+
+.slot-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #203f34;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.slot-section-title strong {
+  color: #68706d;
+  font-size: 12px;
+}
+
+.slot-section-title.is-break {
+  margin-top: 6px;
+  color: #8a6f58;
+}
+
 .slot-empty {
   display: grid;
   place-content: center;
-  min-height: 220px;
+  min-height: 140px;
   border: 1px dashed #c9c0b0;
   border-radius: 8px;
   background: rgba(255, 253, 250, 0.56);
@@ -272,6 +297,18 @@ select {
   max-width: 240px;
   color: #68706d;
   font-size: 13px;
+}
+
+.slot-break-empty {
+  display: grid;
+  place-items: center;
+  min-height: 58px;
+  border: 1px dashed #d7d1c4;
+  border-radius: 7px;
+  background: rgba(255, 253, 250, 0.42);
+  color: #9a8d7b;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .back-to-board {
@@ -964,6 +1001,28 @@ select {
 .panel-mode-tabs button.is-active {
   background: #203f34;
   color: #fffdfa;
+}
+
+.schedule-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.schedule-mode-tabs button {
+  min-height: 42px;
+  border: 1px solid #d7d1c4;
+  border-radius: 7px;
+  background: #fffdfa;
+  color: #626a65;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.schedule-mode-tabs button.is-active {
+  border-color: #203f34;
+  background: #e7efe4;
+  color: #203f34;
 }
 
 .field {
