@@ -4,6 +4,7 @@ import './App.css'
 const STORAGE_KEY = 'time-manager-tasks'
 const HABIT_STORAGE_KEY = 'time-manager-habits'
 const REVIEW_STORAGE_KEY = 'time-manager-daily-reviews'
+const REVIEW_ANALYSIS_STORAGE_KEY = 'time-manager-review-analyses'
 const COIN_STORAGE_KEY = 'time-manager-coins'
 const COINS_PER_COMPLETION = 1
 
@@ -341,6 +342,33 @@ function normalizeReviews(savedReviews) {
   )
 }
 
+function normalizeReviewAnalyses(savedAnalyses) {
+  if (!savedAnalyses || typeof savedAnalyses !== 'object' || Array.isArray(savedAnalyses)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(savedAnalyses)
+      .filter(([date, analysis]) => typeof date === 'string' && analysis)
+      .map(([date, analysis]) => [
+        date,
+        {
+          generatedAt: analysis.generatedAt || null,
+          summary: typeof analysis.summary === 'string' ? analysis.summary : '',
+          positives: Array.isArray(analysis.positives) ? analysis.positives : [],
+          blockers: Array.isArray(analysis.blockers) ? analysis.blockers : [],
+          tomorrowSuggestion:
+            typeof analysis.tomorrowSuggestion === 'string'
+              ? analysis.tomorrowSuggestion
+              : '',
+          encouragement:
+            typeof analysis.encouragement === 'string' ? analysis.encouragement : '',
+          tags: Array.isArray(analysis.tags) ? analysis.tags : [],
+        },
+      ]),
+  )
+}
+
 function loadTasks() {
   try {
     const savedTasks = localStorage.getItem(STORAGE_KEY)
@@ -363,6 +391,15 @@ function loadReviews() {
   try {
     const savedReviews = localStorage.getItem(REVIEW_STORAGE_KEY)
     return savedReviews ? normalizeReviews(JSON.parse(savedReviews)) : {}
+  } catch {
+    return {}
+  }
+}
+
+function loadReviewAnalyses() {
+  try {
+    const savedAnalyses = localStorage.getItem(REVIEW_ANALYSIS_STORAGE_KEY)
+    return savedAnalyses ? normalizeReviewAnalyses(JSON.parse(savedAnalyses)) : {}
   } catch {
     return {}
   }
@@ -518,6 +555,67 @@ function getTasksForSlotAndBreak(dayTasks, slot) {
   )
 }
 
+function createReviewAnalysisPayload(date, note, dayTasks) {
+  const completedTasks = dayTasks.filter((task) => task.completed)
+  const unfinishedTasks = dayTasks.filter((task) => !task.completed)
+  const habitTasks = dayTasks.filter((task) => task.itemType === 'habit')
+  const completionRate =
+    dayTasks.length === 0
+      ? 0
+      : Math.round((completedTasks.length / dayTasks.length) * 100)
+
+  return {
+    date,
+    note,
+    stats: {
+      totalTasks: dayTasks.length,
+      completedTasks: completedTasks.length,
+      unfinishedTasks: unfinishedTasks.length,
+      completionRate,
+      habitTasks: habitTasks.length,
+    },
+    completedTaskTitles: completedTasks.map((task) => task.title),
+    unfinishedTaskTitles: unfinishedTasks.map((task) => task.title),
+    habitTaskTitles: habitTasks.map((task) => task.title),
+  }
+}
+
+function createMockReviewAnalysis(payload) {
+  const hasNote = payload.note.trim().length > 0
+  const hasUnfinishedTasks = payload.unfinishedTaskTitles.length > 0
+  const completionRate = payload.stats.completionRate
+
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: hasNote
+      ? `今天记录了 ${payload.note.trim().length} 个字，任务完成率 ${completionRate}%。`
+      : `今天还没有写复盘，任务完成率 ${completionRate}%。`,
+    positives:
+      completionRate >= 80
+        ? ['完成率很高，说明今天的计划和执行比较贴合。']
+        : payload.completedTaskTitles.length > 0
+          ? [`已经完成 ${payload.completedTaskTitles.length} 项任务，有推进就值得记录。`]
+          : ['今天的记录还比较轻，可以先写下一个最小收获。'],
+    blockers: hasUnfinishedTasks
+      ? [
+          `还有 ${payload.unfinishedTaskTitles.length} 项未完成，可能需要重新估算任务量或调整时段。`,
+        ]
+      : ['没有明显未完成项，适合补充今天为什么顺利。'],
+    tomorrowSuggestion: hasUnfinishedTasks
+      ? `明天优先处理：${payload.unfinishedTaskTitles.slice(0, 2).join('、')}。`
+      : '明天可以继续保持同样节奏，并提前留出一个缓冲时段。',
+    encouragement:
+      completionRate >= 80
+        ? '今天的节奏不错，继续把这种稳定感攒起来。'
+        : '复盘不是审判，是给明天的自己递一张更清楚的地图。',
+    tags: [
+      completionRate >= 80 ? '高完成率' : '需调整',
+      hasNote ? '有记录' : '待补充',
+      payload.stats.habitTasks > 0 ? '含习惯' : '无习惯',
+    ],
+  }
+}
+
 function vibrateOnComplete() {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     navigator.vibrate(18)
@@ -528,6 +626,7 @@ function App() {
   const [tasks, setTasks] = useState(loadTasks)
   const [habits, setHabits] = useState(loadHabits)
   const [dailyReviews, setDailyReviews] = useState(loadReviews)
+  const [reviewAnalyses, setReviewAnalyses] = useState(loadReviewAnalyses)
   const [coins, setCoins] = useState(loadCoins)
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [reviewDate, setReviewDate] = useState(getDateString)
@@ -560,6 +659,13 @@ function App() {
   useEffect(() => {
     localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(dailyReviews))
   }, [dailyReviews])
+
+  useEffect(() => {
+    localStorage.setItem(
+      REVIEW_ANALYSIS_STORAGE_KEY,
+      JSON.stringify(reviewAnalyses),
+    )
+  }, [reviewAnalyses])
 
   useEffect(() => {
     localStorage.setItem(COIN_STORAGE_KEY, String(coins))
@@ -763,6 +869,7 @@ function App() {
       ? 0
       : Math.round((reviewCompletedCount / reviewTasks.length) * 100)
   const reviewText = dailyReviews[reviewDate]?.note || ''
+  const reviewAnalysis = reviewAnalyses[reviewDate] || null
   const currentSlotId =
     selectedDate === getDateString() ? getCurrentSlotId(currentMinute) : null
   const selectedSlot = TIME_SLOTS.find((slot) => slot.id === selectedSlotId)
@@ -904,6 +1011,16 @@ function App() {
         note,
         updatedAt: new Date().toISOString(),
       },
+    }))
+  }
+
+  function analyzeDailyReview() {
+    const payload = createReviewAnalysisPayload(reviewDate, reviewText, reviewTasks)
+    const analysis = createMockReviewAnalysis(payload)
+
+    setReviewAnalyses((currentAnalyses) => ({
+      ...currentAnalyses,
+      [reviewDate]: analysis,
     }))
   }
 
@@ -1299,13 +1416,49 @@ function App() {
                 {reviewTasks.length} 项 · 完成率 {reviewCompletionRate}%
               </strong>
             </div>
-            <em>AI 分析预留</em>
+            <button
+              className="review-ai-button"
+              type="button"
+              onClick={analyzeDailyReview}
+            >
+              AI 分析今日
+            </button>
           </div>
           <textarea
             value={reviewText}
             onChange={(event) => updateDailyReview(reviewDate, event.target.value)}
             placeholder="写下今天发生了什么、做得好的地方、卡住的地方，或者明天想调整的事。"
           />
+          {reviewAnalysis ? (
+            <section className="review-analysis" aria-label="AI 分析结果">
+              <div className="review-analysis-head">
+                <strong>模拟 AI 分析</strong>
+                <span>
+                  {reviewAnalysis.generatedAt
+                    ? new Date(reviewAnalysis.generatedAt).toLocaleTimeString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : ''}
+                </span>
+              </div>
+              <p>{reviewAnalysis.summary}</p>
+              <div className="analysis-tags">
+                {reviewAnalysis.tags.map((tag) => (
+                  <span key={tag}>{tag}</span>
+                ))}
+              </div>
+              <dl className="analysis-list">
+                <dt>做得好的地方</dt>
+                <dd>{reviewAnalysis.positives.join(' ')}</dd>
+                <dt>可能的卡点</dt>
+                <dd>{reviewAnalysis.blockers.join(' ')}</dd>
+                <dt>明日建议</dt>
+                <dd>{reviewAnalysis.tomorrowSuggestion}</dd>
+              </dl>
+              <blockquote>{reviewAnalysis.encouragement}</blockquote>
+            </section>
+          ) : null}
         </section>
       </section>
     )
