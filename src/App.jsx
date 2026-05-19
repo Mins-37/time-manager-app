@@ -10,6 +10,7 @@ const COIN_STORAGE_KEY = 'time-manager-coins'
 const COIN_EVENTS_STORAGE_KEY = 'time-manager-coin-events'
 const REWARD_SETTLEMENTS_STORAGE_KEY = 'time-manager-reward-settlements'
 const CUSTOM_REWARDS_STORAGE_KEY = 'time-manager-custom-rewards'
+const FINANCE_STORAGE_KEY = 'time-manager-finance-records'
 const COINS_PER_COMPLETION = 1
 const MAX_COIN_EVENTS = 120
 
@@ -94,6 +95,24 @@ const PLAYER_TITLES = [
   '长期主义者',
 ]
 const EMPTY_CUSTOM_REWARD_FORM = {
+  title: '',
+  note: '',
+}
+const FINANCE_CATEGORIES = [
+  '餐饮',
+  '交通',
+  '学习',
+  '娱乐',
+  '购物',
+  '生活',
+  '收入',
+  '其他',
+]
+const EMPTY_FINANCE_FORM = {
+  date: getDateString(),
+  type: 'expense',
+  category: '餐饮',
+  amount: '',
   title: '',
   note: '',
 }
@@ -509,6 +528,14 @@ function formatCoinAmount(amount) {
   return amount > 0 ? `+${amount}` : String(amount)
 }
 
+function formatMoney(amount) {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
 function clampNumber(value, min, max, fallback) {
   const number = Number(value)
   if (!Number.isFinite(number)) {
@@ -737,6 +764,70 @@ function normalizeCustomRewards(savedRewards) {
     .filter((reward) => reward.title)
 }
 
+function inferFinanceCategory(text, type) {
+  if (type === 'income') {
+    return '收入'
+  }
+
+  const content = text.toLowerCase()
+  if (/餐|饭|食|奶茶|咖啡|美团|饿了么|kfc|麦当劳|食堂/.test(content)) {
+    return '餐饮'
+  }
+  if (/车|地铁|公交|滴滴|打车|铁路|火车|机票|加油/.test(content)) {
+    return '交通'
+  }
+  if (/书|课程|学习|文具|考试|资料|教育/.test(content)) {
+    return '学习'
+  }
+  if (/电影|游戏|会员|娱乐|视频|音乐|演出|旅游/.test(content)) {
+    return '娱乐'
+  }
+  if (/淘宝|京东|拼多多|购物|商店|超市|服饰|数码/.test(content)) {
+    return '购物'
+  }
+  if (/水电|话费|房租|物业|医院|药|生活|缴费/.test(content)) {
+    return '生活'
+  }
+
+  return '其他'
+}
+
+function normalizeFinanceRecords(savedRecords) {
+  if (!Array.isArray(savedRecords)) {
+    return []
+  }
+
+  return savedRecords
+    .filter((record) => record && Number(record.amount) > 0)
+    .map((record) => {
+      const type = record.type === 'income' ? 'income' : 'expense'
+      const title =
+        typeof record.title === 'string' && record.title.trim()
+          ? record.title.trim()
+          : type === 'income'
+            ? '收入'
+            : '支出'
+
+      return {
+        id: record.id || createId(),
+        date:
+          typeof record.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(record.date)
+            ? record.date
+            : getDateString(),
+        type,
+        category:
+          typeof record.category === 'string' && record.category.trim()
+            ? record.category.trim()
+            : inferFinanceCategory(title, type),
+        amount: Math.abs(Number(record.amount)),
+        title,
+        note: typeof record.note === 'string' ? record.note : '',
+        createdAt: record.createdAt || new Date().toISOString(),
+      }
+    })
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+}
+
 function loadTasks() {
   try {
     const savedTasks = localStorage.getItem(STORAGE_KEY)
@@ -820,6 +911,15 @@ function loadCustomRewards() {
   }
 }
 
+function loadFinanceRecords() {
+  try {
+    const savedRecords = localStorage.getItem(FINANCE_STORAGE_KEY)
+    return savedRecords ? normalizeFinanceRecords(JSON.parse(savedRecords)) : []
+  } catch {
+    return []
+  }
+}
+
 function createCoinEvent({ amount, title, type, date, sourceId }) {
   return {
     id: createId(),
@@ -830,6 +930,115 @@ function createCoinEvent({ amount, title, type, date, sourceId }) {
     sourceId: sourceId || null,
     createdAt: new Date().toISOString(),
   }
+}
+
+function createFinanceRecord(form) {
+  const amount = Math.abs(Number(form.amount))
+  const type = form.type === 'income' ? 'income' : 'expense'
+  const title = form.title.trim() || (type === 'income' ? '收入' : '支出')
+
+  return {
+    id: createId(),
+    date: form.date || getDateString(),
+    type,
+    category: form.category || inferFinanceCategory(title, type),
+    amount,
+    title,
+    note: form.note.trim(),
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function splitCsvLine(line) {
+  const cells = []
+  let currentCell = ''
+  let inQuotes = false
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index]
+    const nextCharacter = line[index + 1]
+
+    if (character === '"' && nextCharacter === '"') {
+      currentCell += '"'
+      index += 1
+    } else if (character === '"') {
+      inQuotes = !inQuotes
+    } else if (character === ',' && !inQuotes) {
+      cells.push(currentCell.trim())
+      currentCell = ''
+    } else {
+      currentCell += character
+    }
+  }
+
+  cells.push(currentCell.trim())
+  return cells
+}
+
+function normalizeImportedDate(value) {
+  const match = value.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
+  if (!match) {
+    return getDateString()
+  }
+
+  const [, year, month, day] = match
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+}
+
+function parseMoney(value) {
+  const normalized = value.replace(/[^\d.-]/g, '')
+  const amount = Math.abs(Number(normalized))
+  return Number.isFinite(amount) ? amount : 0
+}
+
+function parseFinanceImport(text) {
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const records = []
+
+  lines.forEach((line) => {
+    const cells = splitCsvLine(line)
+    const joined = cells.join(' ')
+
+    if (!/\d/.test(joined) || /交易时间|交易类型|账单|收\/支|金额/.test(joined)) {
+      return
+    }
+
+    const date = normalizeImportedDate(joined)
+    const amountCell =
+      cells.find((cell) => /[¥￥]\s*\d|\d+\.\d{1,2}/.test(cell)) || ''
+    const amount = parseMoney(amountCell)
+
+    if (amount <= 0) {
+      return
+    }
+
+    const type = /收入|收款|退款|转入|\+/.test(joined) ? 'income' : 'expense'
+    const title =
+      cells.find(
+        (cell) =>
+          cell &&
+          !/[¥￥]\s*\d|\d+\.\d{1,2}/.test(cell) &&
+          !/\d{4}[/-]\d{1,2}[/-]\d{1,2}/.test(cell) &&
+          !/支出|收入|交易成功|支付成功|已存入零钱/.test(cell),
+      ) || (type === 'income' ? '导入收入' : '导入支出')
+
+    records.push({
+      id: createId(),
+      date,
+      type,
+      category: inferFinanceCategory(joined, type),
+      amount,
+      title,
+      note: '导入账单',
+      createdAt: new Date().toISOString(),
+    })
+  })
+
+  return records
 }
 
 function createTask(form) {
@@ -1319,6 +1528,10 @@ function App() {
   )
   const [rewardAiStatus, setRewardAiStatus] = useState('idle')
   const [rewardAiError, setRewardAiError] = useState('')
+  const [financeRecords, setFinanceRecords] = useState(loadFinanceRecords)
+  const [financeForm, setFinanceForm] = useState(EMPTY_FINANCE_FORM)
+  const [financeMonth, setFinanceMonth] = useState(() => getDateString().slice(0, 7))
+  const [financeImportStatus, setFinanceImportStatus] = useState('')
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [reviewDate, setReviewDate] = useState(getDateString)
   const [reviewScope, setReviewScope] = useState('day')
@@ -1385,6 +1598,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem(CUSTOM_REWARDS_STORAGE_KEY, JSON.stringify(customRewards))
   }, [customRewards])
+
+  useEffect(() => {
+    localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(financeRecords))
+  }, [financeRecords])
 
   useEffect(() => {
     const updateCurrentMinute = () => setCurrentMinute(getCurrentMinute())
@@ -1660,6 +1877,42 @@ function App() {
     () => [...REWARD_ITEMS, ...customRewards],
     [customRewards],
   )
+  const financeMonthRecords = useMemo(
+    () => financeRecords.filter((record) => record.date.startsWith(financeMonth)),
+    [financeMonth, financeRecords],
+  )
+  const financeStats = useMemo(() => {
+    const income = financeMonthRecords
+      .filter((record) => record.type === 'income')
+      .reduce((total, record) => total + record.amount, 0)
+    const expense = financeMonthRecords
+      .filter((record) => record.type === 'expense')
+      .reduce((total, record) => total + record.amount, 0)
+    const categoryTotals = financeMonthRecords
+      .filter((record) => record.type === 'expense')
+      .reduce((totals, record) => {
+        totals[record.category] = (totals[record.category] || 0) + record.amount
+        return totals
+      }, {})
+    const topCategories = Object.entries(categoryTotals)
+      .map(([category, amount]) => ({
+        category,
+        amount,
+        percent: expense === 0 ? 0 : Math.round((amount / expense) * 100),
+      }))
+      .sort((a, b) => b.amount - a.amount)
+
+    return {
+      income,
+      expense,
+      balance: income - expense,
+      incomePercent:
+        income + expense === 0 ? 0 : Math.round((income / (income + expense)) * 100),
+      expensePercent:
+        income + expense === 0 ? 0 : Math.round((expense / (income + expense)) * 100),
+      topCategories,
+    }
+  }, [financeMonthRecords])
 
   function selectDate(nextDate) {
     setSelectedDate(nextDate)
@@ -1781,6 +2034,20 @@ function App() {
 
   function updateCustomRewardForm(field, value) {
     setCustomRewardForm((currentForm) => ({ ...currentForm, [field]: value }))
+  }
+
+  function updateFinanceForm(field, value) {
+    setFinanceForm((currentForm) => {
+      const nextForm = { ...currentForm, [field]: value }
+      if (field === 'type' && value === 'income') {
+        nextForm.category = '收入'
+      }
+      if (field === 'type' && value === 'expense' && currentForm.category === '收入') {
+        nextForm.category = '餐饮'
+      }
+
+      return nextForm
+    })
   }
 
   function openAiConfigPanel() {
@@ -2041,6 +2308,59 @@ function App() {
     setCustomRewards((currentRewards) =>
       currentRewards.filter((reward) => reward.id !== itemId),
     )
+  }
+
+  function saveFinanceRecord(event) {
+    event.preventDefault()
+
+    if (!Number(financeForm.amount)) {
+      return
+    }
+
+    const nextRecord = createFinanceRecord(financeForm)
+    setFinanceRecords((currentRecords) =>
+      normalizeFinanceRecords([nextRecord, ...currentRecords]),
+    )
+    setFinanceForm({
+      ...EMPTY_FINANCE_FORM,
+      date: financeForm.date,
+      type: financeForm.type,
+      category: financeForm.type === 'income' ? '收入' : financeForm.category,
+    })
+    setFinanceMonth(nextRecord.date.slice(0, 7))
+  }
+
+  function deleteFinanceRecord(recordId) {
+    setFinanceRecords((currentRecords) =>
+      currentRecords.filter((record) => record.id !== recordId),
+    )
+  }
+
+  function importFinanceFile(event) {
+    const file = event.target.files?.[0]
+    if (!file) {
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const importedRecords = parseFinanceImport(String(reader.result || ''))
+      if (importedRecords.length === 0) {
+        setFinanceImportStatus('没有识别到账单记录，可以换 CSV 或文本文件试试。')
+        return
+      }
+
+      setFinanceRecords((currentRecords) =>
+        normalizeFinanceRecords([...importedRecords, ...currentRecords]),
+      )
+      setFinanceMonth(importedRecords[0].date.slice(0, 7))
+      setFinanceImportStatus(`已导入 ${importedRecords.length} 条记录。`)
+      event.target.value = ''
+    }
+    reader.onerror = () => {
+      setFinanceImportStatus('导入失败，请重新选择文件。')
+    }
+    reader.readAsText(file, 'utf-8')
   }
 
   function saveTask(event) {
@@ -2519,34 +2839,59 @@ function App() {
   }
 
   function getRewardRequirementStatus(item, isRewardLocked) {
-    const lockedReasons = []
+    const conditions = []
 
     if (isRewardLocked && item.cost >= 30) {
-      lockedReasons.push('今日完成率需达到 80%')
+      conditions.push({
+        label: '今日完成率达到 80%',
+        met: rewardStats.completionRate >= 80,
+      })
     }
 
     const requirements = item.requirements
     if (requirements) {
-      if (rewardStats.completionRate < requirements.minCompletionRate) {
-        lockedReasons.push(`今日完成率需 ${requirements.minCompletionRate}%`)
+      if (requirements.minCompletionRate > 0) {
+        conditions.push({
+          label: `今日完成率 ${rewardStats.completionRate}% / ${requirements.minCompletionRate}%`,
+          met: rewardStats.completionRate >= requirements.minCompletionRate,
+        })
       }
-      if (weekAverageCompletionRate < requirements.minWeekCompletionRate) {
-        lockedReasons.push(`周平均完成率需 ${requirements.minWeekCompletionRate}%`)
+      if (requirements.minWeekCompletionRate > 0) {
+        conditions.push({
+          label: `周平均 ${weekAverageCompletionRate}% / ${requirements.minWeekCompletionRate}%`,
+          met: weekAverageCompletionRate >= requirements.minWeekCompletionRate,
+        })
       }
-      if (monthAverageCompletionRate < requirements.minMonthCompletionRate) {
-        lockedReasons.push(`月平均完成率需 ${requirements.minMonthCompletionRate}%`)
+      if (requirements.minMonthCompletionRate > 0) {
+        conditions.push({
+          label: `月平均 ${monthAverageCompletionRate}% / ${requirements.minMonthCompletionRate}%`,
+          met: monthAverageCompletionRate >= requirements.minMonthCompletionRate,
+        })
       }
-      if (completionStreak < requirements.minStreak) {
-        lockedReasons.push(`连续高完成需 ${requirements.minStreak} 天`)
+      if (requirements.minStreak > 0) {
+        conditions.push({
+          label: `连续高完成 ${completionStreak} / ${requirements.minStreak} 天`,
+          met: completionStreak >= requirements.minStreak,
+        })
       }
-      if (playerLevel.level < requirements.minLevel) {
-        lockedReasons.push(`等级需 Lv.${requirements.minLevel}`)
+      if (requirements.minLevel > 1) {
+        conditions.push({
+          label: `等级 Lv.${playerLevel.level} / Lv.${requirements.minLevel}`,
+          met: playerLevel.level >= requirements.minLevel,
+        })
       }
     }
 
+    if (conditions.length === 0 && (item.requirement || item.requirements?.text)) {
+      conditions.push({
+        label: item.requirement || item.requirements.text,
+        met: true,
+      })
+    }
+
     return {
-      unlocked: lockedReasons.length === 0,
-      label: lockedReasons[0] || item.requirement || item.requirements?.text || '',
+      unlocked: conditions.every((condition) => condition.met),
+      conditions,
     }
   }
 
@@ -2657,8 +3002,17 @@ function App() {
                   <div>
                     <span>{item.tone}</span>
                     <strong>{item.title}</strong>
-                    {requirementStatus.label ? (
-                      <small>{requirementStatus.label}</small>
+                    {requirementStatus.conditions.length > 0 ? (
+                      <ul className="reward-conditions">
+                        {requirementStatus.conditions.map((condition) => (
+                          <li
+                            className={condition.met ? 'is-met' : ''}
+                            key={condition.label}
+                          >
+                            {condition.label}
+                          </li>
+                        ))}
+                      </ul>
                     ) : null}
                     {item.reason ? <p>{item.reason}</p> : null}
                   </div>
@@ -2724,6 +3078,186 @@ function App() {
                 </article>
               ))}
             </div>
+          )}
+        </section>
+      </section>
+    )
+  }
+
+  function renderFinanceView() {
+    return (
+      <section className="finance-view" aria-label="收支">
+        <header className="finance-header">
+          <div>
+            <span>月度收支</span>
+            <h1>{financeMonth}</h1>
+          </div>
+          <input
+            aria-label="选择月份"
+            type="month"
+            value={financeMonth}
+            onChange={(event) => setFinanceMonth(event.target.value)}
+          />
+        </header>
+
+        <section className="finance-summary">
+          <article>
+            <span>收入</span>
+            <strong>{formatMoney(financeStats.income)}</strong>
+            <small>{financeStats.incomePercent}%</small>
+          </article>
+          <article>
+            <span>支出</span>
+            <strong>{formatMoney(financeStats.expense)}</strong>
+            <small>{financeStats.expensePercent}%</small>
+          </article>
+          <article>
+            <span>结余</span>
+            <strong>{formatMoney(financeStats.balance)}</strong>
+            <small>{financeMonthRecords.length} 笔</small>
+          </article>
+        </section>
+
+        <form className="finance-form" onSubmit={saveFinanceRecord}>
+          <div className="finance-type-tabs" aria-label="收支类型">
+            <button
+              className={financeForm.type === 'expense' ? 'is-active' : ''}
+              type="button"
+              onClick={() => updateFinanceForm('type', 'expense')}
+            >
+              支出
+            </button>
+            <button
+              className={financeForm.type === 'income' ? 'is-active' : ''}
+              type="button"
+              onClick={() => updateFinanceForm('type', 'income')}
+            >
+              收入
+            </button>
+          </div>
+
+          <div className="finance-form-grid">
+            <label className="field">
+              <span>日期</span>
+              <input
+                type="date"
+                value={financeForm.date}
+                onChange={(event) => updateFinanceForm('date', event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>金额</span>
+              <input
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                type="number"
+                value={financeForm.amount}
+                onChange={(event) => updateFinanceForm('amount', event.target.value)}
+                placeholder="0"
+              />
+            </label>
+          </div>
+
+          <label className="field">
+            <span>类别</span>
+            <select
+              value={financeForm.category}
+              onChange={(event) => updateFinanceForm('category', event.target.value)}
+            >
+              {FINANCE_CATEGORIES.filter(
+                (category) =>
+                  financeForm.type === 'income'
+                    ? category === '收入' || category === '其他'
+                    : category !== '收入',
+              ).map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>名称</span>
+            <input
+              type="text"
+              value={financeForm.title}
+              onChange={(event) => updateFinanceForm('title', event.target.value)}
+              placeholder="例如：午饭 / 生活费"
+            />
+          </label>
+
+          <div className="finance-actions">
+            <button className="panel-save" type="submit">
+              记一笔
+            </button>
+            <label className="finance-import">
+              导入账单
+              <input
+                accept=".csv,.txt"
+                type="file"
+                onChange={importFinanceFile}
+              />
+            </label>
+          </div>
+          {financeImportStatus ? (
+            <p className="finance-import-status">{financeImportStatus}</p>
+          ) : null}
+        </form>
+
+        <section className="finance-categories">
+          <div className="finance-section-head">
+            <span>支出分类占比</span>
+            <strong>{financeStats.topCategories.length} 类</strong>
+          </div>
+          {financeStats.topCategories.length === 0 ? (
+            <p className="finance-empty">这个月还没有支出记录。</p>
+          ) : (
+            financeStats.topCategories.map((category) => (
+              <article className="finance-category" key={category.category}>
+                <div>
+                  <span>{category.category}</span>
+                  <strong>{formatMoney(category.amount)}</strong>
+                </div>
+                <div className="finance-bar">
+                  <span style={{ width: `${category.percent}%` }} />
+                </div>
+                <em>{category.percent}%</em>
+              </article>
+            ))
+          )}
+        </section>
+
+        <section className="finance-records">
+          <div className="finance-section-head">
+            <span>本月流水</span>
+            <strong>{financeMonthRecords.length} 笔</strong>
+          </div>
+          {financeMonthRecords.length === 0 ? (
+            <p className="finance-empty">先添加一笔，或从账单文件导入。</p>
+          ) : (
+            financeMonthRecords.map((record) => (
+              <article className="finance-record" key={record.id}>
+                <div>
+                  <strong>{record.title}</strong>
+                  <span>
+                    {record.date} · {record.category}
+                  </span>
+                </div>
+                <em className={record.type === 'income' ? 'is-income' : ''}>
+                  {record.type === 'income' ? '+' : '-'}
+                  {formatMoney(record.amount)}
+                </em>
+                <button
+                  type="button"
+                  aria-label="删除收支记录"
+                  onClick={() => deleteFinanceRecord(record.id)}
+                >
+                  ×
+                </button>
+              </article>
+            ))
           )}
         </section>
       </section>
@@ -2926,6 +3460,8 @@ function App() {
             renderReviewView()
           ) : activeTab === 'reward' ? (
             renderRewardView()
+          ) : activeTab === 'finance' ? (
+            renderFinanceView()
           ) : (
             <section className="placeholder-view">
               <h1>{TABS.find((tab) => tab.id === activeTab)?.label}</h1>
