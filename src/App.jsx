@@ -7,7 +7,10 @@ const REVIEW_STORAGE_KEY = 'time-manager-daily-reviews'
 const REVIEW_ANALYSIS_STORAGE_KEY = 'time-manager-review-analyses'
 const AI_CONFIG_STORAGE_KEY = 'time-manager-ai-config'
 const COIN_STORAGE_KEY = 'time-manager-coins'
+const COIN_EVENTS_STORAGE_KEY = 'time-manager-coin-events'
+const REWARD_SETTLEMENTS_STORAGE_KEY = 'time-manager-reward-settlements'
 const COINS_PER_COMPLETION = 1
+const MAX_COIN_EVENTS = 120
 
 const TIME_SLOTS = [
   { id: '1', label: '1', start: '08:00', end: '08:45', timeLabel: '8:00\n8:45' },
@@ -56,6 +59,39 @@ const REVIEW_SCOPES = [
   { id: 'year', label: '年' },
 ]
 const DRAG_START_THRESHOLD = 8
+const REWARD_ITEMS = [
+  {
+    id: 'short-break',
+    title: '自由刷手机 15 分钟',
+    cost: 10,
+    tone: '短休息',
+  },
+  {
+    id: 'milk-tea',
+    title: '买一杯喜欢的饮品',
+    cost: 20,
+    tone: '小奖励',
+  },
+  {
+    id: 'episode',
+    title: '看一集剧或综艺',
+    cost: 30,
+    tone: '放松',
+  },
+  {
+    id: 'half-day',
+    title: '兑换半天自由时间',
+    cost: 50,
+    tone: '大回血',
+  },
+]
+const PLAYER_TITLES = [
+  '新手规划者',
+  '节奏掌控者',
+  '专注执行者',
+  '时间建筑师',
+  '长期主义者',
+]
 
 const QUADRANTS = [
   {
@@ -383,6 +419,75 @@ function getReviewTasksForDate(allTasks, allHabits, date) {
   )
 }
 
+function getDayRewardStats(allTasks, allHabits, date) {
+  const reviewTasks = getReviewTasksForDate(allTasks, allHabits, date)
+  const completedCount = reviewTasks.filter((task) => task.completed).length
+  const completionRate =
+    reviewTasks.length === 0
+      ? 0
+      : Math.round((completedCount / reviewTasks.length) * 100)
+  const unfinishedScheduledCount = reviewTasks.filter(
+    (task) =>
+      task.itemType === 'task' && task.countsInReview && !task.completed,
+  ).length
+  const completionBonus =
+    reviewTasks.length === 0 ? 0 : completionRate === 100 ? 5 : completionRate >= 80 ? 3 : 0
+  const penalty = unfinishedScheduledCount
+
+  return {
+    total: reviewTasks.length,
+    completed: completedCount,
+    completionRate,
+    completionBonus,
+    penalty,
+    net: completionBonus - penalty,
+    unfinishedScheduledCount,
+  }
+}
+
+function getCompletionStreak(allTasks, allHabits, startDate = getDateString()) {
+  let streak = 0
+  let currentDate = startDate
+
+  for (let index = 0; index < 180; index += 1) {
+    const stats = getDayRewardStats(allTasks, allHabits, currentDate)
+    if (stats.total === 0 || stats.completionRate < 80) {
+      break
+    }
+
+    streak += 1
+    currentDate = shiftDate(currentDate, -1)
+  }
+
+  return streak
+}
+
+function getPlayerLevel(totalEarnedCoins) {
+  const earnedCoins = Math.max(0, totalEarnedCoins)
+  const level = Math.floor(Math.sqrt(earnedCoins / 8)) + 1
+  const currentLevelStart = (level - 1) ** 2 * 8
+  const nextLevelStart = level ** 2 * 8
+  const progress =
+    nextLevelStart === currentLevelStart
+      ? 0
+      : Math.round(
+          ((earnedCoins - currentLevelStart) /
+            (nextLevelStart - currentLevelStart)) *
+            100,
+        )
+
+  return {
+    level,
+    title: PLAYER_TITLES[Math.min(level - 1, PLAYER_TITLES.length - 1)],
+    progress,
+    coinsToNext: Math.max(0, nextLevelStart - earnedCoins),
+  }
+}
+
+function formatCoinAmount(amount) {
+  return amount > 0 ? `+${amount}` : String(amount)
+}
+
 function normalizeHabits(savedHabits) {
   if (!Array.isArray(savedHabits)) {
     return []
@@ -483,6 +588,60 @@ function normalizeAiConfig(savedConfig) {
   }
 }
 
+function normalizeCoinEvents(savedEvents) {
+  if (!Array.isArray(savedEvents)) {
+    return []
+  }
+
+  return savedEvents
+    .filter((event) => event && typeof event.title === 'string')
+    .map((event) => ({
+      id: event.id || createId(),
+      amount: Number.isFinite(Number(event.amount)) ? Number(event.amount) : 0,
+      title: event.title,
+      type: typeof event.type === 'string' ? event.type : 'adjustment',
+      date: typeof event.date === 'string' ? event.date : getDateString(),
+      createdAt: event.createdAt || new Date().toISOString(),
+      sourceId: typeof event.sourceId === 'string' ? event.sourceId : null,
+    }))
+    .filter((event) => event.amount !== 0)
+    .slice(0, MAX_COIN_EVENTS)
+}
+
+function normalizeRewardSettlements(savedSettlements) {
+  if (
+    !savedSettlements ||
+    typeof savedSettlements !== 'object' ||
+    Array.isArray(savedSettlements)
+  ) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(savedSettlements)
+      .filter(([date, settlement]) => typeof date === 'string' && settlement)
+      .map(([date, settlement]) => [
+        date,
+        {
+          date,
+          net: Number.isFinite(Number(settlement.net))
+            ? Number(settlement.net)
+            : 0,
+          completed: Number.isFinite(Number(settlement.completed))
+            ? Number(settlement.completed)
+            : 0,
+          total: Number.isFinite(Number(settlement.total))
+            ? Number(settlement.total)
+            : 0,
+          completionRate: Number.isFinite(Number(settlement.completionRate))
+            ? Number(settlement.completionRate)
+            : 0,
+          createdAt: settlement.createdAt || new Date().toISOString(),
+        },
+      ]),
+  )
+}
+
 function loadTasks() {
   try {
     const savedTasks = localStorage.getItem(STORAGE_KEY)
@@ -534,6 +693,38 @@ function loadCoins() {
     return Number.isFinite(savedCoins) && savedCoins >= 0 ? savedCoins : 0
   } catch {
     return 0
+  }
+}
+
+function loadCoinEvents() {
+  try {
+    const savedEvents = localStorage.getItem(COIN_EVENTS_STORAGE_KEY)
+    return savedEvents ? normalizeCoinEvents(JSON.parse(savedEvents)) : []
+  } catch {
+    return []
+  }
+}
+
+function loadRewardSettlements() {
+  try {
+    const savedSettlements = localStorage.getItem(REWARD_SETTLEMENTS_STORAGE_KEY)
+    return savedSettlements
+      ? normalizeRewardSettlements(JSON.parse(savedSettlements))
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function createCoinEvent({ amount, title, type, date, sourceId }) {
+  return {
+    id: createId(),
+    amount,
+    title,
+    type,
+    date: date || getDateString(),
+    sourceId: sourceId || null,
+    createdAt: new Date().toISOString(),
   }
 }
 
@@ -934,6 +1125,8 @@ function App() {
   const [aiAnalysisStatus, setAiAnalysisStatus] = useState('idle')
   const [aiAnalysisError, setAiAnalysisError] = useState('')
   const [coins, setCoins] = useState(loadCoins)
+  const [coinEvents, setCoinEvents] = useState(loadCoinEvents)
+  const [rewardSettlements, setRewardSettlements] = useState(loadRewardSettlements)
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [reviewDate, setReviewDate] = useState(getDateString)
   const [reviewScope, setReviewScope] = useState('day')
@@ -985,6 +1178,17 @@ function App() {
   useEffect(() => {
     localStorage.setItem(COIN_STORAGE_KEY, String(coins))
   }, [coins])
+
+  useEffect(() => {
+    localStorage.setItem(COIN_EVENTS_STORAGE_KEY, JSON.stringify(coinEvents))
+  }, [coinEvents])
+
+  useEffect(() => {
+    localStorage.setItem(
+      REWARD_SETTLEMENTS_STORAGE_KEY,
+      JSON.stringify(rewardSettlements),
+    )
+  }, [rewardSettlements])
 
   useEffect(() => {
     const updateCurrentMinute = () => setCurrentMinute(getCurrentMinute())
@@ -1219,6 +1423,35 @@ function App() {
     selectedTasks.length === 0
       ? 0
       : Math.round((completedCount / selectedTasks.length) * 100)
+  const rewardDate = getDateString()
+  const rewardStats = useMemo(
+    () => getDayRewardStats(tasks, habits, rewardDate),
+    [habits, rewardDate, tasks],
+  )
+  const rewardSettlement = rewardSettlements[rewardDate] || null
+  const totalEarnedCoins = Math.max(
+    coins,
+    coinEvents
+      .filter((event) => event.amount > 0)
+      .reduce((total, event) => total + event.amount, 0),
+  )
+  const playerLevel = getPlayerLevel(totalEarnedCoins)
+  const completionStreak = useMemo(
+    () => getCompletionStreak(tasks, habits, rewardDate),
+    [habits, rewardDate, tasks],
+  )
+  const weekEarnedCoins = useMemo(() => {
+    const weekStart = getWeekStart(rewardDate)
+    const weekEnd = shiftDate(weekStart, 6)
+
+    return coinEvents
+      .filter(
+        (event) =>
+          event.amount > 0 && event.date >= weekStart && event.date <= weekEnd,
+      )
+      .reduce((total, event) => total + event.amount, 0)
+  }, [coinEvents, rewardDate])
+  const todayCoinEvents = coinEvents.filter((event) => event.date === rewardDate)
 
   function selectDate(nextDate) {
     setSelectedDate(nextDate)
@@ -1432,6 +1665,96 @@ function App() {
     })
   }
 
+  function addCoinEvents(eventSpecs) {
+    let nextBalance = coins
+    const createdEvents = []
+
+    eventSpecs.forEach((eventSpec) => {
+      const requestedAmount = eventSpec.amount
+      const actualAmount =
+        requestedAmount < 0
+          ? -Math.min(Math.abs(requestedAmount), nextBalance)
+          : requestedAmount
+
+      if (actualAmount === 0) {
+        return
+      }
+
+      nextBalance += actualAmount
+      createdEvents.push(createCoinEvent({ ...eventSpec, amount: actualAmount }))
+    })
+
+    if (createdEvents.length === 0) {
+      return []
+    }
+
+    setCoins(nextBalance)
+    setCoinEvents((currentEvents) =>
+      [...createdEvents, ...currentEvents].slice(0, MAX_COIN_EVENTS),
+    )
+
+    return createdEvents
+  }
+
+  function addCoinEvent(eventSpec) {
+    return addCoinEvents([eventSpec])[0] || null
+  }
+
+  function settleTodayRewards() {
+    if (rewardSettlement || rewardStats.total === 0) {
+      return
+    }
+
+    const eventsToCreate = []
+    if (rewardStats.completionBonus > 0) {
+      eventsToCreate.push({
+        amount: rewardStats.completionBonus,
+        title:
+          rewardStats.completionRate === 100
+            ? '今日全清奖励'
+            : '今日高完成率奖励',
+        type: 'daily-bonus',
+        date: rewardDate,
+      })
+    }
+
+    if (rewardStats.penalty > 0) {
+      eventsToCreate.push({
+        amount: -rewardStats.penalty,
+        title: `已安排任务未完成 · ${rewardStats.penalty} 项`,
+        type: 'daily-penalty',
+        date: rewardDate,
+      })
+    }
+
+    addCoinEvents(eventsToCreate)
+    setRewardSettlements((currentSettlements) => ({
+      ...currentSettlements,
+      [rewardDate]: {
+        date: rewardDate,
+        net: rewardStats.net,
+        completed: rewardStats.completed,
+        total: rewardStats.total,
+        completionRate: rewardStats.completionRate,
+        createdAt: new Date().toISOString(),
+      },
+    }))
+  }
+
+  function redeemReward(item) {
+    if (coins < item.cost) {
+      return
+    }
+
+    addCoinEvent({
+      amount: -item.cost,
+      title: `兑换：${item.title}`,
+      type: 'redeem',
+      date: rewardDate,
+      sourceId: item.id,
+    })
+  }
+
   function saveTask(event) {
     event.preventDefault()
 
@@ -1510,7 +1833,13 @@ function App() {
         vibrateOnComplete()
       }
       if (shouldReward) {
-        setCoins((currentCoins) => currentCoins + COINS_PER_COMPLETION)
+        addCoinEvent({
+          amount: COINS_PER_COMPLETION,
+          title: `完成习惯：${task.title}`,
+          type: 'habit-complete',
+          date: selectedDate,
+          sourceId: task.id,
+        })
       }
 
       setHabits((currentHabits) =>
@@ -1539,7 +1868,13 @@ function App() {
       vibrateOnComplete()
     }
     if (shouldReward) {
-      setCoins((currentCoins) => currentCoins + COINS_PER_COMPLETION)
+      addCoinEvent({
+        amount: COINS_PER_COMPLETION,
+        title: `完成任务：${task.title}`,
+        type: 'task-complete',
+        date: selectedDate,
+        sourceId: task.id,
+      })
     }
 
     setTasks((currentTasks) =>
@@ -1895,6 +2230,142 @@ function App() {
     )
   }
 
+  function renderRewardView() {
+    const settlementButtonText = rewardSettlement
+      ? '今日已结算'
+      : rewardStats.total === 0
+        ? '暂无可结算任务'
+        : '结算今日'
+    const isRewardLocked =
+      rewardStats.total > 0 && rewardStats.completionRate < 80
+
+    return (
+      <section className="reward-view" aria-label="奖励惩罚">
+        <section className="reward-hero">
+          <div>
+            <span>成长账户</span>
+            <h1>Lv.{playerLevel.level}</h1>
+            <p>{playerLevel.title}</p>
+          </div>
+          <strong>{coins}</strong>
+          <div className="level-progress" aria-label="等级进度">
+            <span style={{ width: `${playerLevel.progress}%` }} />
+          </div>
+          <small>距离下一等级还差 {playerLevel.coinsToNext} 金币经验</small>
+        </section>
+
+        <div className="reward-stat-grid">
+          <article>
+            <strong>{weekEarnedCoins}</strong>
+            <span>本周获得</span>
+          </article>
+          <article>
+            <strong>{completionStreak}</strong>
+            <span>连续高完成</span>
+          </article>
+          <article>
+            <strong>{rewardStats.completionRate}%</strong>
+            <span>今日完成率</span>
+          </article>
+        </div>
+
+        <section className="daily-settlement">
+          <div className="reward-section-head">
+            <div>
+              <span>今日结算</span>
+              <h2>
+                {rewardStats.completed}/{rewardStats.total} 项
+              </h2>
+            </div>
+            <button
+              type="button"
+              disabled={Boolean(rewardSettlement) || rewardStats.total === 0}
+              onClick={settleTodayRewards}
+            >
+              {settlementButtonText}
+            </button>
+          </div>
+
+          <div className="settlement-row">
+            <span>完成率奖励</span>
+            <strong>{formatCoinAmount(rewardStats.completionBonus)}</strong>
+          </div>
+          <div className="settlement-row">
+            <span>已安排未完成惩罚</span>
+            <strong>{rewardStats.penalty > 0 ? `-${rewardStats.penalty}` : '0'}</strong>
+          </div>
+          <div className="settlement-row is-total">
+            <span>预计净变化</span>
+            <strong>{formatCoinAmount(rewardStats.net)}</strong>
+          </div>
+        </section>
+
+        <section className="reward-shop">
+          <div className="reward-section-head">
+            <div>
+              <span>奖励商店</span>
+              <h2>把努力兑换成可见的快乐</h2>
+            </div>
+          </div>
+          {isRewardLocked ? (
+            <p className="reward-lock-note">
+              今日完成率达到 80% 后，高阶奖励会解锁。
+            </p>
+          ) : null}
+
+          <div className="reward-shop-list">
+            {REWARD_ITEMS.map((item) => (
+              <article className="reward-card" key={item.id}>
+                <div>
+                  <span>{item.tone}</span>
+                  <strong>{item.title}</strong>
+                </div>
+                <button
+                  type="button"
+                  disabled={coins < item.cost || (isRewardLocked && item.cost >= 30)}
+                  onClick={() => redeemReward(item)}
+                >
+                  {isRewardLocked && item.cost >= 30 ? '需80%' : `${item.cost} 金币`}
+                </button>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="coin-log">
+          <div className="reward-section-head">
+            <div>
+              <span>金币记录</span>
+              <h2>今天的反馈</h2>
+            </div>
+          </div>
+          {todayCoinEvents.length === 0 ? (
+            <p className="coin-log-empty">完成任务或结算后，这里会出现记录。</p>
+          ) : (
+            <div className="coin-log-list">
+              {todayCoinEvents.map((event) => (
+                <article className="coin-event" key={event.id}>
+                  <div>
+                    <strong>{event.title}</strong>
+                    <span>
+                      {new Date(event.createdAt).toLocaleTimeString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  <em className={event.amount > 0 ? 'is-positive' : 'is-negative'}>
+                    {formatCoinAmount(event.amount)}
+                  </em>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      </section>
+    )
+  }
+
   function renderSlotDetail() {
     const totalSlotItems = uniqueTasks([
       ...selectedSlotTasks,
@@ -2089,6 +2560,8 @@ function App() {
             </div>
           ) : activeTab === 'review' ? (
             renderReviewView()
+          ) : activeTab === 'reward' ? (
+            renderRewardView()
           ) : (
             <section className="placeholder-view">
               <h1>{TABS.find((tab) => tab.id === activeTab)?.label}</h1>

@@ -728,6 +728,249 @@ select {
   font-weight: 800;
 }
 
+.reward-view {
+  display: grid;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  gap: 10px;
+  height: 100%;
+  padding: 14px;
+  overflow-y: auto;
+  background:
+    linear-gradient(145deg, rgba(231, 239, 228, 0.9), transparent 42%),
+    #fffdfa;
+}
+
+.reward-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  padding: 18px;
+  border-radius: 8px;
+  background: #203f34;
+  color: #fffdfa;
+  box-shadow: 0 14px 36px rgba(32, 63, 52, 0.22);
+}
+
+.reward-hero span,
+.reward-section-head span,
+.reward-card span {
+  color: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0.72;
+}
+
+.reward-hero h1 {
+  margin: 2px 0 0;
+  color: #fffdfa;
+  font-size: 42px;
+  line-height: 0.95;
+}
+
+.reward-hero p {
+  margin: 4px 0 0;
+  color: rgba(255, 253, 250, 0.78);
+  font-weight: 700;
+}
+
+.reward-hero > strong {
+  align-self: center;
+  min-width: 74px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f4bda2;
+  color: #203f34;
+  font-size: 34px;
+  line-height: 1;
+  text-align: center;
+}
+
+.level-progress {
+  grid-column: 1 / -1;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 253, 250, 0.18);
+}
+
+.level-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #f4bda2;
+}
+
+.reward-hero small {
+  grid-column: 1 / -1;
+  color: rgba(255, 253, 250, 0.72);
+}
+
+.reward-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.reward-stat-grid article {
+  min-width: 0;
+  padding: 12px 10px;
+  border: 1px solid #ddd7ca;
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.86);
+}
+
+.reward-stat-grid strong {
+  display: block;
+  color: #203f34;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.reward-stat-grid span {
+  display: block;
+  margin-top: 6px;
+  color: #68706d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.daily-settlement,
+.reward-shop,
+.coin-log {
+  display: grid;
+  gap: 8px;
+}
+
+.daily-settlement {
+  padding: 12px;
+  border: 1px solid #ddd7ca;
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.9);
+}
+
+.reward-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.reward-section-head h2 {
+  margin: 2px 0 0;
+  color: #202326;
+  font-size: 17px;
+  line-height: 1.15;
+}
+
+.reward-section-head button,
+.reward-card button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  background: #203f34;
+  color: #fffdfa;
+  padding: 0 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.reward-section-head button:disabled,
+.reward-card button:disabled {
+  background: #e5e0d6;
+  color: #9a9d96;
+  cursor: not-allowed;
+}
+
+.settlement-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #68706d;
+  font-size: 13px;
+}
+
+.settlement-row strong {
+  color: #203f34;
+  font-size: 16px;
+}
+
+.settlement-row.is-total {
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid #e7e1d6;
+  color: #202326;
+  font-weight: 900;
+}
+
+.reward-shop-list,
+.coin-log-list {
+  display: grid;
+  gap: 8px;
+}
+
+.reward-lock-note {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #f0c6b0;
+  border-radius: 8px;
+  background: rgba(244, 189, 162, 0.22);
+  color: #7b4a3b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.reward-card,
+.coin-event {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #ddd7ca;
+  border-radius: 8px;
+  background: rgba(255, 253, 250, 0.9);
+}
+
+.reward-card strong,
+.coin-event strong {
+  display: block;
+  margin-top: 3px;
+  color: #202326;
+  font-size: 14px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.coin-event span,
+.coin-log-empty {
+  color: #68706d;
+  font-size: 12px;
+}
+
+.coin-event em {
+  flex: 0 0 auto;
+  font-style: normal;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.coin-event em.is-positive {
+  color: #315b43;
+}
+
+.coin-event em.is-negative {
+  color: #9a3f31;
+}
+
+.coin-log-empty {
+  margin: 0;
+  padding: 14px;
+  border: 1px dashed #d7d1c4;
+  border-radius: 8px;
+  text-align: center;
+}
+
 .placeholder-view {
   display: grid;
   place-content: center;
