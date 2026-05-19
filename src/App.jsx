@@ -182,6 +182,42 @@ function getDateRange(startDate, endDate) {
   return dates
 }
 
+function getTaskCompletedDate(task) {
+  if (!task.completedAt) {
+    return task.completed ? task.taskDate : null
+  }
+
+  const completedAt = new Date(task.completedAt)
+  return Number.isNaN(completedAt.getTime())
+    ? task.taskDate
+    : getDateString(completedAt)
+}
+
+function isTaskCompletedByDate(task, date) {
+  if (!task.completed) {
+    return false
+  }
+
+  const completedDate = getTaskCompletedDate(task)
+  return !completedDate || completedDate <= date
+}
+
+function shouldShowTaskOnDate(task, date) {
+  if (task.taskDate === date) {
+    return true
+  }
+
+  if (task.taskDate > date) {
+    return false
+  }
+
+  if (!task.completed) {
+    return true
+  }
+
+  return getTaskCompletedDate(task) === date
+}
+
 function formatRangeLabel(range) {
   return range.start === range.end ? range.start : `${range.start} 至 ${range.end}`
 }
@@ -332,13 +368,19 @@ function normalizeTasks(savedTasks) {
 function getTasksForDate(allTasks, allHabits, date) {
   const weekday = parseDate(date).getDay()
   const dailyTasks = allTasks
-    .filter((task) => task.taskDate === date)
-    .map(createTaskInstance)
+    .filter((task) => shouldShowTaskOnDate(task, date))
+    .map((task) => createTaskInstance(task, date))
   const habitTasks = allHabits
     .filter((habit) => habit.weekdays.includes(weekday))
     .map((habit) => createHabitInstance(habit, date))
 
   return [...dailyTasks, ...habitTasks]
+}
+
+function getReviewTasksForDate(allTasks, allHabits, date) {
+  return getTasksForDate(allTasks, allHabits, date).filter(
+    (task) => task.itemType === 'habit' || task.countsInReview,
+  )
 }
 
 function normalizeHabits(savedHabits) {
@@ -557,11 +599,24 @@ function createHabitInstance(habit, date) {
   }
 }
 
-function createTaskInstance(task) {
+function createTaskInstance(task, date = task.taskDate) {
+  const completed = isTaskCompletedByDate(task, date)
+  const isCarriedOver = task.taskDate < date
+  const isScheduled = hasTaskSchedule(task)
+  const isOverdueScheduledTask = isCarriedOver && isScheduled && !completed
+
   return {
     ...task,
     itemType: 'task',
-    renderKey: task.id,
+    renderKey: isCarriedOver ? `task-${task.id}-${date}` : task.id,
+    taskDate: date,
+    sourceDate: task.taskDate,
+    completed,
+    completedAt: completed ? task.completedAt : null,
+    important: isOverdueScheduledTask ? true : task.important,
+    urgent: isOverdueScheduledTask ? true : task.urgent,
+    isCarriedOver,
+    countsInReview: isScheduled || completed,
   }
 }
 
@@ -648,7 +703,7 @@ function createReviewAnalysisPayload(scope, date, allReviews, allTasks, allHabit
   const range = getPeriodRange(scope, date)
   const dates = getDateRange(range.start, range.end)
   const dailyEntries = dates.map((entryDate) => {
-    const dayTasks = getTasksForDate(allTasks, allHabits, entryDate)
+    const dayTasks = getReviewTasksForDate(allTasks, allHabits, entryDate)
     const note = allReviews[entryDate]?.note || ''
 
     return {
@@ -1115,7 +1170,7 @@ function App() {
     })
   }, [])
   const reviewTasks = useMemo(
-    () => getTasksForDate(tasks, habits, reviewDate),
+    () => getReviewTasksForDate(tasks, habits, reviewDate),
     [habits, reviewDate, tasks],
   )
   const reviewCompletedCount = reviewTasks.filter((task) => task.completed).length
@@ -1589,7 +1644,7 @@ function App() {
             {task.title}
           </span>
           <small>
-            {task.itemType === 'habit' ? '习惯 · ' : ''}
+            {task.itemType === 'habit' ? '习惯 · ' : task.isCarriedOver ? '延续 · ' : ''}
             {getTaskScheduleLabel(task)}
           </small>
         </button>
@@ -1654,7 +1709,7 @@ function App() {
           >
             <span>{task.title}</span>
             <small>
-              {task.itemType === 'habit' ? '习惯 · ' : ''}
+              {task.itemType === 'habit' ? '习惯 · ' : task.isCarriedOver ? '延续 · ' : ''}
               {getTaskScheduleLabel(task)}
             </small>
           </div>
@@ -1717,7 +1772,7 @@ function App() {
           {reviewWeeks.map((week) => (
             <div className="review-week" key={week[0]}>
               {week.map((date) => {
-                const dayTasks = getTasksForDate(tasks, habits, date)
+                const dayTasks = getReviewTasksForDate(tasks, habits, date)
                 const doneCount = dayTasks.filter((task) => task.completed).length
                 const hasReview = Boolean(dailyReviews[date]?.note?.trim())
                 const isSelected = date === reviewDate
