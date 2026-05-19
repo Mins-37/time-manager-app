@@ -86,6 +86,16 @@ select {
   cursor: pointer;
 }
 
+.date-chip.month-even {
+  background: #fffdfa;
+  color: #203f34;
+}
+
+.date-chip.month-odd {
+  background: #dfeeda;
+  color: #315b43;
+}
+
 .date-number {
   display: block;
   font-size: 14px;
@@ -110,15 +120,21 @@ select {
 }
 
 .date-chip.is-weekend {
-  border-color: rgba(224, 239, 218, 0.9);
-  background: #dfeeda;
-  color: #315b43;
+  border-color: #f4bda2;
+  box-shadow: inset 0 0 0 2px rgba(244, 189, 162, 0.72);
 }
 
 .date-chip.is-selected {
   border-color: #fffdfa;
-  background: #fffdfa;
+  background: #203f34;
+  box-shadow: inset 0 0 0 2px #fffdfa;
+  color: #fffdfa;
+  font-weight: 800;
+}
+
+.date-chip.is-selected.is-weekend {
   color: #203f34;
+  background: #fffdfa;
   font-weight: 800;
 }
 
@@ -693,7 +709,7 @@ select {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   border-top: 1px solid #ddd7ca;
   background: #203f34;
 }
@@ -702,7 +718,7 @@ select {
   border: 0;
   background: transparent;
   color: rgba(255, 253, 250, 0.72);
-  font-size: 16px;
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -815,6 +831,14 @@ select {
   cursor: pointer;
 }
 
+.review-day.month-even {
+  background: #fffdfa;
+}
+
+.review-day.month-odd {
+  background: #e7efe4;
+}
+
 .review-day strong {
   font-size: 18px;
   line-height: 1;
@@ -835,6 +859,11 @@ select {
   height: 6px;
   border-radius: 50%;
   background: #f4bda2;
+}
+
+.review-day.is-weekend {
+  border-color: #f4bda2;
+  box-shadow: inset 0 0 0 2px rgba(244, 189, 162, 0.4);
 }
 
 .review-day.is-today {

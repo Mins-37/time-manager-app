@@ -27,12 +27,12 @@ const TABS = [
   { id: 'plan', label: '当日计划' },
   { id: 'review', label: '总结复盘' },
   { id: 'reward', label: '奖励/惩罚' },
+  { id: 'finance', label: '收支' },
 ]
 
-const DATE_RAIL_PAST_DAYS = 21
-const DATE_RAIL_TOTAL_DAYS = 90
-const REVIEW_PAST_WEEKS = 12
-const REVIEW_TOTAL_WEEKS = 32
+const DATE_RAIL_TOTAL_DAYS = 220
+const REVIEW_PAST_WEEKS = 28
+const REVIEW_TOTAL_WEEKS = 60
 const FINAL_BREAK_END = '23:30'
 const REFERENCE_WEEK_SUNDAY = '2026-05-24'
 const REFERENCE_WEEK_NUMBER = 12
@@ -112,6 +112,11 @@ function isWeekend(dateString) {
 
 function isSunday(dateString) {
   return parseDate(dateString).getDay() === 0
+}
+
+function getMonthTone(dateString) {
+  const [year, month] = dateString.split('-').map(Number)
+  return (year * 12 + month) % 2 === 0 ? 'month-even' : 'month-odd'
 }
 
 function getWeekStart(dateString) {
@@ -526,7 +531,6 @@ function App() {
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [reviewDate, setReviewDate] = useState(getDateString)
   const [currentMinute, setCurrentMinute] = useState(getCurrentMinute)
-  const [dateRailAnchor] = useState(getDateString)
   const [activeTab, setActiveTab] = useState('plan')
   const [selectedSlotId, setSelectedSlotId] = useState(null)
   const [timeRailMode, setTimeRailMode] = useState('period')
@@ -587,6 +591,23 @@ function App() {
         })
     })
   }, [activeTab, reviewDate])
+
+  useEffect(() => {
+    if (activeTab !== 'plan') {
+      return
+    }
+
+    const today = getDateString()
+    requestAnimationFrame(() => {
+      dateRailRef.current
+        ?.querySelector(`[data-date="${today}"]`)
+        ?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'start',
+        })
+    })
+  }, [activeTab])
 
   useEffect(() => {
     if (!dragState) {
@@ -693,9 +714,9 @@ function App() {
 
   const dateRail = useMemo(() => {
     return Array.from({ length: DATE_RAIL_TOTAL_DAYS }, (_, index) =>
-      shiftDate(dateRailAnchor, index - DATE_RAIL_PAST_DAYS),
+      shiftDate(getDateString(), index),
     )
-  }, [dateRailAnchor])
+  }, [])
 
   const selectedTasks = useMemo(
     () => getTasksForDate(tasks, habits, selectedDate),
@@ -776,6 +797,14 @@ function App() {
     setSelectedSlotId(null)
     setExpandedStackKey(null)
     setTaskForm((currentForm) => ({ ...currentForm, taskDate: nextDate }))
+  }
+
+  function handleTabChange(nextTab) {
+    if (nextTab === 'plan') {
+      selectDate(getDateString())
+    }
+
+    setActiveTab(nextTab)
   }
 
   function handleDateDoubleClick(date) {
@@ -1242,7 +1271,9 @@ function App() {
                   <button
                     className={`review-day ${isSelected ? 'is-selected' : ''} ${
                       isToday ? 'is-today' : ''
-                    } ${hasReview ? 'has-review' : ''}`}
+                    } ${getMonthTone(date)} ${isWeekend(date) ? 'is-weekend' : ''} ${
+                      hasReview ? 'has-review' : ''
+                    }`}
                     key={date}
                     data-review-date={date}
                     type="button"
@@ -1352,7 +1383,7 @@ function App() {
               <button
                 className={`date-chip ${
                   date === selectedDate ? 'is-selected' : ''
-                } ${isWeekend(date) ? 'is-weekend' : ''}`}
+                } ${getMonthTone(date)} ${isWeekend(date) ? 'is-weekend' : ''}`}
                 key={date}
                 data-date={date}
                 type="button"
@@ -1498,7 +1529,7 @@ function App() {
               className={activeTab === tab.id ? 'is-active' : ''}
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => handleTabChange(tab.id)}
             >
               {tab.label}
             </button>
