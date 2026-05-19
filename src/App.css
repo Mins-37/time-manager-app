@@ -919,7 +919,8 @@ select {
   font-size: 12px;
 }
 
-.review-ai-button {
+.review-ai-button,
+.review-ai-config-button {
   flex: 0 0 auto;
   min-height: 34px;
   border: 1px solid #d7d1c4;
@@ -929,6 +930,16 @@ select {
   font-size: 12px;
   font-weight: 900;
   cursor: pointer;
+}
+
+.review-ai-config-button {
+  min-width: 44px;
+  color: #203f34;
+}
+
+.review-ai-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
 }
 
 .review-scope-tabs {
@@ -959,8 +970,19 @@ select {
   color: #fffdfa;
 }
 
-.review-ai-button:hover {
+.review-ai-button:hover,
+.review-ai-config-button:hover {
   background: #f8efe8;
+}
+
+.review-ai-error {
+  border: 1px solid rgba(154, 63, 49, 0.22);
+  border-radius: 7px;
+  background: rgba(154, 63, 49, 0.08);
+  color: #9a3f31;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .review-editor textarea {
@@ -1149,6 +1171,42 @@ select {
   border: 1px solid #ddd7ca;
   background: #fffdfa;
   box-shadow: 0 18px 50px rgba(45, 49, 43, 0.2);
+}
+
+.ai-config-panel {
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
+.ai-config-note {
+  margin: 0;
+  border: 1px solid #d7d1c4;
+  border-radius: 7px;
+  background: #f8f5ed;
+  color: #626a65;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ai-config-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mock-analysis-button {
+  min-height: 48px;
+  border: 1px solid #d7d1c4;
+  border-radius: 7px;
+  background: #fffdfa;
+  color: #626a65;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mock-analysis-button:hover {
+  background: #f0eee7;
 }
 
 .task-panel-header {

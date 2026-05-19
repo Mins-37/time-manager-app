@@ -5,6 +5,7 @@ const STORAGE_KEY = 'time-manager-tasks'
 const HABIT_STORAGE_KEY = 'time-manager-habits'
 const REVIEW_STORAGE_KEY = 'time-manager-daily-reviews'
 const REVIEW_ANALYSIS_STORAGE_KEY = 'time-manager-review-analyses'
+const AI_CONFIG_STORAGE_KEY = 'time-manager-ai-config'
 const COIN_STORAGE_KEY = 'time-manager-coins'
 const COINS_PER_COMPLETION = 1
 
@@ -427,6 +428,19 @@ function normalizeReviewAnalyses(savedAnalyses) {
   )
 }
 
+function normalizeAiConfig(savedConfig) {
+  if (!savedConfig || typeof savedConfig !== 'object') {
+    return null
+  }
+
+  return {
+    endpoint: typeof savedConfig.endpoint === 'string' ? savedConfig.endpoint : '',
+    apiKey: typeof savedConfig.apiKey === 'string' ? savedConfig.apiKey : '',
+    model: typeof savedConfig.model === 'string' ? savedConfig.model : '',
+    mode: savedConfig.mode === 'custom' ? 'custom' : 'compatible',
+  }
+}
+
 function loadTasks() {
   try {
     const savedTasks = localStorage.getItem(STORAGE_KEY)
@@ -460,6 +474,15 @@ function loadReviewAnalyses() {
     return savedAnalyses ? normalizeReviewAnalyses(JSON.parse(savedAnalyses)) : {}
   } catch {
     return {}
+  }
+}
+
+function loadAiConfig() {
+  try {
+    const savedConfig = localStorage.getItem(AI_CONFIG_STORAGE_KEY)
+    return savedConfig ? normalizeAiConfig(JSON.parse(savedConfig)) : null
+  } catch {
+    return null
   }
 }
 
@@ -708,6 +731,124 @@ function createMockReviewAnalysis(payload) {
   }
 }
 
+function getAnalysisPrompt() {
+  return [
+    '你是一个私人时间管理复盘助手。',
+    '请基于用户提供的任务、习惯和复盘文字，给出简洁、具体、可执行的中文分析。',
+    '只返回 JSON，不要返回 Markdown。',
+    'JSON 结构必须包含：summary 字符串，positives 字符串数组，blockers 字符串数组，tomorrowSuggestion 字符串，encouragement 字符串，tags 字符串数组。',
+  ].join('\n')
+}
+
+function normalizeAiAnalysis(rawAnalysis, payload) {
+  const fallbackAnalysis = createMockReviewAnalysis(payload)
+  const analysis = rawAnalysis?.analysis || rawAnalysis
+
+  if (!analysis || typeof analysis !== 'object') {
+    return fallbackAnalysis
+  }
+
+  return {
+    scope: payload.scope,
+    range: payload.range,
+    generatedAt: new Date().toISOString(),
+    summary:
+      typeof analysis.summary === 'string'
+        ? analysis.summary
+        : fallbackAnalysis.summary,
+    positives: Array.isArray(analysis.positives)
+      ? analysis.positives.map(String)
+      : fallbackAnalysis.positives,
+    blockers: Array.isArray(analysis.blockers)
+      ? analysis.blockers.map(String)
+      : fallbackAnalysis.blockers,
+    tomorrowSuggestion:
+      typeof analysis.tomorrowSuggestion === 'string'
+        ? analysis.tomorrowSuggestion
+        : fallbackAnalysis.tomorrowSuggestion,
+    encouragement:
+      typeof analysis.encouragement === 'string'
+        ? analysis.encouragement
+        : fallbackAnalysis.encouragement,
+    tags: Array.isArray(analysis.tags)
+      ? analysis.tags.map(String)
+      : fallbackAnalysis.tags,
+  }
+}
+
+function extractAiJson(data) {
+  if (data?.analysis) {
+    return data.analysis
+  }
+
+  if (data?.summary) {
+    return data
+  }
+
+  const content =
+    data?.choices?.[0]?.message?.content ||
+    data?.output_text ||
+    data?.content ||
+    ''
+
+  if (typeof content !== 'string') {
+    return data
+  }
+
+  const cleanedContent = content
+    .trim()
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```$/i, '')
+    .trim()
+
+  return JSON.parse(cleanedContent)
+}
+
+async function requestAiAnalysis(aiConfig, payload) {
+  const headers = {
+    'Content-Type': 'application/json',
+  }
+
+  if (aiConfig.apiKey.trim()) {
+    headers.Authorization = `Bearer ${aiConfig.apiKey.trim()}`
+  }
+
+  const body =
+    aiConfig.mode === 'custom'
+      ? {
+          payload,
+          instruction: getAnalysisPrompt(),
+        }
+      : {
+          ...(aiConfig.model.trim() ? { model: aiConfig.model.trim() } : {}),
+          messages: [
+            {
+              role: 'system',
+              content: getAnalysisPrompt(),
+            },
+            {
+              role: 'user',
+              content: JSON.stringify(payload),
+            },
+          ],
+          temperature: 0.3,
+        }
+
+  const response = await fetch(aiConfig.endpoint.trim(), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new Error(`接口返回 ${response.status}`)
+  }
+
+  const data = await response.json()
+  return normalizeAiAnalysis(extractAiJson(data), payload)
+}
+
 function vibrateOnComplete() {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     navigator.vibrate(18)
@@ -719,6 +860,19 @@ function App() {
   const [habits, setHabits] = useState(loadHabits)
   const [dailyReviews, setDailyReviews] = useState(loadReviews)
   const [reviewAnalyses, setReviewAnalyses] = useState(loadReviewAnalyses)
+  const [aiConfig, setAiConfig] = useState(loadAiConfig)
+  const [aiConfigForm, setAiConfigForm] = useState(
+    () =>
+      loadAiConfig() || {
+        endpoint: '',
+        apiKey: '',
+        model: '',
+        mode: 'compatible',
+      },
+  )
+  const [isAiConfigOpen, setIsAiConfigOpen] = useState(false)
+  const [aiAnalysisStatus, setAiAnalysisStatus] = useState('idle')
+  const [aiAnalysisError, setAiAnalysisError] = useState('')
   const [coins, setCoins] = useState(loadCoins)
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [reviewDate, setReviewDate] = useState(getDateString)
@@ -759,6 +913,14 @@ function App() {
       JSON.stringify(reviewAnalyses),
     )
   }, [reviewAnalyses])
+
+  useEffect(() => {
+    if (aiConfig) {
+      localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(aiConfig))
+    } else {
+      localStorage.removeItem(AI_CONFIG_STORAGE_KEY)
+    }
+  }, [aiConfig])
 
   useEffect(() => {
     localStorage.setItem(COIN_STORAGE_KEY, String(coins))
@@ -1112,7 +1274,75 @@ function App() {
     }))
   }
 
-  function analyzeReviewPeriod() {
+  function updateAiConfigForm(field, value) {
+    setAiConfigForm((currentForm) => ({ ...currentForm, [field]: value }))
+  }
+
+  function openAiConfigPanel() {
+    setAiConfigForm(
+      aiConfig || {
+        endpoint: '',
+        apiKey: '',
+        model: '',
+        mode: 'compatible',
+      },
+    )
+    setIsAiConfigOpen(true)
+  }
+
+  function saveAiConfig(event) {
+    event.preventDefault()
+
+    if (!aiConfigForm.endpoint.trim()) {
+      setAiAnalysisError('请先填写接口网址。')
+      return
+    }
+
+    setAiConfig({
+      ...aiConfigForm,
+      endpoint: aiConfigForm.endpoint.trim(),
+      apiKey: aiConfigForm.apiKey.trim(),
+      model: aiConfigForm.model.trim(),
+    })
+    setAiAnalysisError('')
+    setIsAiConfigOpen(false)
+  }
+
+  async function analyzeReviewPeriod() {
+    const payload = createReviewAnalysisPayload(
+      reviewScope,
+      reviewDate,
+      dailyReviews,
+      tasks,
+      habits,
+    )
+
+    if (!aiConfig?.endpoint?.trim()) {
+      setAiAnalysisError('请先设置 AI 接口。')
+      openAiConfigPanel()
+      return
+    }
+
+    setAiAnalysisStatus('loading')
+    setAiAnalysisError('')
+
+    try {
+      const analysis = await requestAiAnalysis(aiConfig, payload)
+
+      setReviewAnalyses((currentAnalyses) => ({
+        ...currentAnalyses,
+        [getReviewAnalysisKey(reviewScope, payload.range)]: analysis,
+      }))
+      setAiAnalysisStatus('idle')
+    } catch (error) {
+      setAiAnalysisStatus('idle')
+      setAiAnalysisError(
+        error instanceof Error ? error.message : 'AI 分析失败，请检查接口设置。',
+      )
+    }
+  }
+
+  function runMockReviewAnalysis() {
     const payload = createReviewAnalysisPayload(
       reviewScope,
       reviewDate,
@@ -1126,6 +1356,7 @@ function App() {
       ...currentAnalyses,
       [getReviewAnalysisKey(reviewScope, payload.range)]: analysis,
     }))
+    setAiAnalysisError('')
   }
 
   function toggleHabitWeekday(weekday) {
@@ -1538,11 +1769,24 @@ function App() {
             <button
               className="review-ai-button"
               type="button"
+              disabled={aiAnalysisStatus === 'loading'}
               onClick={analyzeReviewPeriod}
             >
-              AI 分析{getReviewScopeLabel(reviewScope)}
+              {aiAnalysisStatus === 'loading'
+                ? '分析中'
+                : `AI 分析${getReviewScopeLabel(reviewScope)}`}
+            </button>
+            <button
+              className="review-ai-config-button"
+              type="button"
+              onClick={openAiConfigPanel}
+            >
+              接口
             </button>
           </div>
+          {aiAnalysisError ? (
+            <div className="review-ai-error">{aiAnalysisError}</div>
+          ) : null}
           <textarea
             value={reviewText}
             onChange={(event) => updateDailyReview(reviewDate, event.target.value)}
@@ -2001,6 +2245,92 @@ function App() {
               </button>
             </div>
           </section>
+        </div>
+      ) : null}
+
+      {isAiConfigOpen ? (
+        <div className="task-panel-backdrop" role="presentation">
+          <form className="task-panel ai-config-panel" onSubmit={saveAiConfig}>
+            <div className="task-panel-header">
+              <h2>AI 接口设置</h2>
+              <button
+                type="button"
+                onClick={() => setIsAiConfigOpen(false)}
+                aria-label="关闭"
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="ai-config-note">
+              仅保存在当前浏览器本地，适合个人自用；更安全的做法是填写你自己的后端代理接口。
+            </p>
+
+            <div className="panel-mode-tabs" aria-label="接口类型">
+              <button
+                className={aiConfigForm.mode === 'compatible' ? 'is-active' : ''}
+                type="button"
+                onClick={() => updateAiConfigForm('mode', 'compatible')}
+              >
+                兼容接口
+              </button>
+              <button
+                className={aiConfigForm.mode === 'custom' ? 'is-active' : ''}
+                type="button"
+                onClick={() => updateAiConfigForm('mode', 'custom')}
+              >
+                自定义代理
+              </button>
+            </div>
+
+            <label className="field">
+              <span>接口网址</span>
+              <input
+                type="url"
+                value={aiConfigForm.endpoint}
+                onChange={(event) =>
+                  updateAiConfigForm('endpoint', event.target.value)
+                }
+                placeholder="https://api.example.com/v1/chat/completions"
+              />
+            </label>
+
+            <label className="field">
+              <span>API 密钥</span>
+              <input
+                type="password"
+                value={aiConfigForm.apiKey}
+                onChange={(event) => updateAiConfigForm('apiKey', event.target.value)}
+                placeholder="只保存在本机浏览器"
+              />
+            </label>
+
+            <label className="field">
+              <span>模型名</span>
+              <input
+                type="text"
+                value={aiConfigForm.model}
+                onChange={(event) => updateAiConfigForm('model', event.target.value)}
+                placeholder="例如 gpt-4o-mini / deepseek-chat"
+              />
+            </label>
+
+            <div className="ai-config-actions">
+              <button className="panel-save" type="submit">
+                保存接口
+              </button>
+              <button
+                className="mock-analysis-button"
+                type="button"
+                onClick={() => {
+                  runMockReviewAnalysis()
+                  setIsAiConfigOpen(false)
+                }}
+              >
+                先用模拟分析
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
 
