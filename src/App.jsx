@@ -602,8 +602,9 @@ function createHabitInstance(habit, date) {
 function createTaskInstance(task, date = task.taskDate) {
   const completed = isTaskCompletedByDate(task, date)
   const isCarriedOver = task.taskDate < date
-  const isScheduled = hasTaskSchedule(task)
-  const isOverdueScheduledTask = isCarriedOver && isScheduled && !completed
+  const wasScheduled = hasTaskSchedule(task)
+  const isOverdueScheduledTask = isCarriedOver && wasScheduled && !completed
+  const shouldClearSchedule = isOverdueScheduledTask
 
   return {
     ...task,
@@ -611,12 +612,16 @@ function createTaskInstance(task, date = task.taskDate) {
     renderKey: isCarriedOver ? `task-${task.id}-${date}` : task.id,
     taskDate: date,
     sourceDate: task.taskDate,
+    slotId: shouldClearSchedule ? '' : task.slotId,
+    scheduleMode: shouldClearSchedule ? 'slot' : task.scheduleMode,
+    startTime: shouldClearSchedule ? '' : task.startTime,
+    endTime: shouldClearSchedule ? '' : task.endTime,
     completed,
     completedAt: completed ? task.completedAt : null,
     important: isOverdueScheduledTask ? true : task.important,
     urgent: isOverdueScheduledTask ? true : task.urgent,
     isCarriedOver,
-    countsInReview: isScheduled || completed,
+    countsInReview: wasScheduled || completed,
   }
 }
 
