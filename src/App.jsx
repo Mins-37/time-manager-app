@@ -48,6 +48,12 @@ const WEEKDAY_OPTIONS = [
   { value: 5, label: '周五' },
   { value: 6, label: '周六' },
 ]
+const REVIEW_SCOPES = [
+  { id: 'day', label: '日' },
+  { id: 'week', label: '周' },
+  { id: 'month', label: '月' },
+  { id: 'year', label: '年' },
+]
 const DRAG_START_THRESHOLD = 8
 
 const QUADRANTS = [
@@ -127,6 +133,56 @@ function getWeekStart(dateString) {
   const mondayOffset = weekday === 0 ? -6 : 1 - weekday
   date.setDate(date.getDate() + mondayOffset)
   return getDateString(date)
+}
+
+function getMonthStart(dateString) {
+  const [year, month] = dateString.split('-').map(Number)
+  return getDateString(new Date(year, month - 1, 1))
+}
+
+function getYearStart(dateString) {
+  const [year] = dateString.split('-').map(Number)
+  return getDateString(new Date(year, 0, 1))
+}
+
+function getPeriodRange(scope, dateString) {
+  if (scope === 'week') {
+    const start = getWeekStart(dateString)
+    return { start, end: shiftDate(start, 6) }
+  }
+
+  if (scope === 'month') {
+    const [year, month] = dateString.split('-').map(Number)
+    const start = getMonthStart(dateString)
+    const end = getDateString(new Date(year, month, 0))
+    return { start, end }
+  }
+
+  if (scope === 'year') {
+    const [year] = dateString.split('-').map(Number)
+    return {
+      start: getYearStart(dateString),
+      end: getDateString(new Date(year, 11, 31)),
+    }
+  }
+
+  return { start: dateString, end: dateString }
+}
+
+function getDateRange(startDate, endDate) {
+  const dates = []
+  let currentDate = startDate
+
+  while (currentDate <= endDate) {
+    dates.push(currentDate)
+    currentDate = shiftDate(currentDate, 1)
+  }
+
+  return dates
+}
+
+function formatRangeLabel(range) {
+  return range.start === range.end ? range.start : `${range.start} 至 ${range.end}`
 }
 
 function getCustomWeekNumber(dateString) {
@@ -349,10 +405,12 @@ function normalizeReviewAnalyses(savedAnalyses) {
 
   return Object.fromEntries(
     Object.entries(savedAnalyses)
-      .filter(([date, analysis]) => typeof date === 'string' && analysis)
-      .map(([date, analysis]) => [
-        date,
+      .filter(([key, analysis]) => typeof key === 'string' && analysis)
+      .map(([key, analysis]) => [
+        key,
         {
+          scope: analysis.scope || 'day',
+          range: analysis.range || null,
           generatedAt: analysis.generatedAt || null,
           summary: typeof analysis.summary === 'string' ? analysis.summary : '',
           positives: Array.isArray(analysis.positives) ? analysis.positives : [],
@@ -555,20 +613,50 @@ function getTasksForSlotAndBreak(dayTasks, slot) {
   )
 }
 
-function createReviewAnalysisPayload(date, note, dayTasks) {
-  const completedTasks = dayTasks.filter((task) => task.completed)
-  const unfinishedTasks = dayTasks.filter((task) => !task.completed)
-  const habitTasks = dayTasks.filter((task) => task.itemType === 'habit')
+function getReviewScopeLabel(scope) {
+  return REVIEW_SCOPES.find((reviewScope) => reviewScope.id === scope)?.label || '日'
+}
+
+function getReviewAnalysisKey(scope, range) {
+  return `${scope}:${range.start}:${range.end}`
+}
+
+function createReviewAnalysisPayload(scope, date, allReviews, allTasks, allHabits) {
+  const range = getPeriodRange(scope, date)
+  const dates = getDateRange(range.start, range.end)
+  const dailyEntries = dates.map((entryDate) => {
+    const dayTasks = getTasksForDate(allTasks, allHabits, entryDate)
+    const note = allReviews[entryDate]?.note || ''
+
+    return {
+      date: entryDate,
+      note,
+      tasks: dayTasks,
+    }
+  })
+  const periodTasks = dailyEntries.flatMap((entry) => entry.tasks)
+  const completedTasks = periodTasks.filter((task) => task.completed)
+  const unfinishedTasks = periodTasks.filter((task) => !task.completed)
+  const habitTasks = periodTasks.filter((task) => task.itemType === 'habit')
+  const combinedNote = dailyEntries
+    .filter((entry) => entry.note.trim())
+    .map((entry) => `${entry.date}：${entry.note.trim()}`)
+    .join('\n')
   const completionRate =
-    dayTasks.length === 0
+    periodTasks.length === 0
       ? 0
-      : Math.round((completedTasks.length / dayTasks.length) * 100)
+      : Math.round((completedTasks.length / periodTasks.length) * 100)
 
   return {
-    date,
-    note,
+    scope,
+    scopeLabel: getReviewScopeLabel(scope),
+    range,
+    rangeLabel: formatRangeLabel(range),
+    note: combinedNote,
+    daysWithReviews: dailyEntries.filter((entry) => entry.note.trim()).length,
+    totalDays: dates.length,
     stats: {
-      totalTasks: dayTasks.length,
+      totalTasks: periodTasks.length,
       completedTasks: completedTasks.length,
       unfinishedTasks: unfinishedTasks.length,
       completionRate,
@@ -584,34 +672,38 @@ function createMockReviewAnalysis(payload) {
   const hasNote = payload.note.trim().length > 0
   const hasUnfinishedTasks = payload.unfinishedTaskTitles.length > 0
   const completionRate = payload.stats.completionRate
+  const scopeText = `${payload.scopeLabel}复盘`
 
   return {
+    scope: payload.scope,
+    range: payload.range,
     generatedAt: new Date().toISOString(),
     summary: hasNote
-      ? `今天记录了 ${payload.note.trim().length} 个字，任务完成率 ${completionRate}%。`
-      : `今天还没有写复盘，任务完成率 ${completionRate}%。`,
+      ? `${scopeText}覆盖 ${payload.rangeLabel}，已有 ${payload.daysWithReviews}/${payload.totalDays} 天记录，任务完成率 ${completionRate}%。`
+      : `${scopeText}覆盖 ${payload.rangeLabel}，目前还没有复盘文字，任务完成率 ${completionRate}%。`,
     positives:
       completionRate >= 80
-        ? ['完成率很高，说明今天的计划和执行比较贴合。']
+        ? ['完成率很高，说明这段时间的计划和执行比较贴合。']
         : payload.completedTaskTitles.length > 0
-          ? [`已经完成 ${payload.completedTaskTitles.length} 项任务，有推进就值得记录。`]
-          : ['今天的记录还比较轻，可以先写下一个最小收获。'],
+          ? [`已经完成 ${payload.completedTaskTitles.length} 项任务，有持续推进就值得记录。`]
+          : ['这段时间的记录还比较轻，可以先补一个最小收获。'],
     blockers: hasUnfinishedTasks
       ? [
-          `还有 ${payload.unfinishedTaskTitles.length} 项未完成，可能需要重新估算任务量或调整时段。`,
+          `还有 ${payload.unfinishedTaskTitles.length} 项未完成，可能需要重新估算任务量或调整安排方式。`,
         ]
-      : ['没有明显未完成项，适合补充今天为什么顺利。'],
+      : ['没有明显未完成项，适合补充这段时间为什么顺利。'],
     tomorrowSuggestion: hasUnfinishedTasks
-      ? `明天优先处理：${payload.unfinishedTaskTitles.slice(0, 2).join('、')}。`
-      : '明天可以继续保持同样节奏，并提前留出一个缓冲时段。',
+      ? `下一阶段优先处理：${payload.unfinishedTaskTitles.slice(0, 2).join('、')}。`
+      : '下一阶段可以继续保持同样节奏，并提前留出一个缓冲时段。',
     encouragement:
       completionRate >= 80
-        ? '今天的节奏不错，继续把这种稳定感攒起来。'
-        : '复盘不是审判，是给明天的自己递一张更清楚的地图。',
+        ? '这段时间的节奏不错，继续把这种稳定感攒起来。'
+        : '复盘不是审判，是给下一阶段的自己递一张更清楚的地图。',
     tags: [
       completionRate >= 80 ? '高完成率' : '需调整',
       hasNote ? '有记录' : '待补充',
       payload.stats.habitTasks > 0 ? '含习惯' : '无习惯',
+      scopeText,
     ],
   }
 }
@@ -630,6 +722,7 @@ function App() {
   const [coins, setCoins] = useState(loadCoins)
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [reviewDate, setReviewDate] = useState(getDateString)
+  const [reviewScope, setReviewScope] = useState('day')
   const [currentMinute, setCurrentMinute] = useState(getCurrentMinute)
   const [activeTab, setActiveTab] = useState('plan')
   const [selectedSlotId, setSelectedSlotId] = useState(null)
@@ -869,7 +962,12 @@ function App() {
       ? 0
       : Math.round((reviewCompletedCount / reviewTasks.length) * 100)
   const reviewText = dailyReviews[reviewDate]?.note || ''
-  const reviewAnalysis = reviewAnalyses[reviewDate] || null
+  const reviewRange = useMemo(
+    () => getPeriodRange(reviewScope, reviewDate),
+    [reviewDate, reviewScope],
+  )
+  const reviewAnalysisKey = getReviewAnalysisKey(reviewScope, reviewRange)
+  const reviewAnalysis = reviewAnalyses[reviewAnalysisKey] || null
   const currentSlotId =
     selectedDate === getDateString() ? getCurrentSlotId(currentMinute) : null
   const selectedSlot = TIME_SLOTS.find((slot) => slot.id === selectedSlotId)
@@ -1014,13 +1112,19 @@ function App() {
     }))
   }
 
-  function analyzeDailyReview() {
-    const payload = createReviewAnalysisPayload(reviewDate, reviewText, reviewTasks)
+  function analyzeReviewPeriod() {
+    const payload = createReviewAnalysisPayload(
+      reviewScope,
+      reviewDate,
+      dailyReviews,
+      tasks,
+      habits,
+    )
     const analysis = createMockReviewAnalysis(payload)
 
     setReviewAnalyses((currentAnalyses) => ({
       ...currentAnalyses,
-      [reviewDate]: analysis,
+      [getReviewAnalysisKey(reviewScope, payload.range)]: analysis,
     }))
   }
 
@@ -1352,7 +1456,10 @@ function App() {
 
   function renderReviewView() {
     return (
-      <section className="review-view" aria-label="总结复盘">
+      <section
+        className={`review-view ${reviewAnalysis ? 'has-analysis' : ''}`}
+        aria-label="总结复盘"
+      >
         <div className="review-header">
           <div>
             <span>总结复盘</span>
@@ -1416,12 +1523,24 @@ function App() {
                 {reviewTasks.length} 项 · 完成率 {reviewCompletionRate}%
               </strong>
             </div>
+            <div className="review-scope-tabs" aria-label="分析范围">
+              {REVIEW_SCOPES.map((scope) => (
+                <button
+                  className={reviewScope === scope.id ? 'is-active' : ''}
+                  key={scope.id}
+                  type="button"
+                  onClick={() => setReviewScope(scope.id)}
+                >
+                  {scope.label}
+                </button>
+              ))}
+            </div>
             <button
               className="review-ai-button"
               type="button"
-              onClick={analyzeDailyReview}
+              onClick={analyzeReviewPeriod}
             >
-              AI 分析今日
+              AI 分析{getReviewScopeLabel(reviewScope)}
             </button>
           </div>
           <textarea
@@ -1432,7 +1551,7 @@ function App() {
           {reviewAnalysis ? (
             <section className="review-analysis" aria-label="AI 分析结果">
               <div className="review-analysis-head">
-                <strong>模拟 AI 分析</strong>
+                <strong>模拟 AI {getReviewScopeLabel(reviewScope)}分析</strong>
                 <span>
                   {reviewAnalysis.generatedAt
                     ? new Date(reviewAnalysis.generatedAt).toLocaleTimeString('zh-CN', {
@@ -1442,6 +1561,11 @@ function App() {
                     : ''}
                 </span>
               </div>
+              {reviewAnalysis.range ? (
+                <small className="analysis-range">
+                  {formatRangeLabel(reviewAnalysis.range)}
+                </small>
+              ) : null}
               <p>{reviewAnalysis.summary}</p>
               <div className="analysis-tags">
                 {reviewAnalysis.tags.map((tag) => (
