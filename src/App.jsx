@@ -467,6 +467,22 @@ function getCompletionStreak(allTasks, allHabits, startDate = getDateString()) {
   return streak
 }
 
+function getAverageCompletionRate(allTasks, allHabits, range) {
+  const dates = getDateRange(range.start, range.end)
+  const activeDays = dates
+    .map((date) => getDayRewardStats(allTasks, allHabits, date))
+    .filter((stats) => stats.total > 0)
+
+  if (activeDays.length === 0) {
+    return 0
+  }
+
+  return Math.round(
+    activeDays.reduce((total, stats) => total + stats.completionRate, 0) /
+      activeDays.length,
+  )
+}
+
 function getPlayerLevel(totalEarnedCoins) {
   const earnedCoins = Math.max(0, totalEarnedCoins)
   const level = Math.floor(Math.sqrt(earnedCoins / 8)) + 1
@@ -661,6 +677,8 @@ function normalizeRewardRequirements(requirements) {
     return {
       text: '无额外条件',
       minCompletionRate: 0,
+      minWeekCompletionRate: 0,
+      minMonthCompletionRate: 0,
       minStreak: 0,
       minLevel: 1,
     }
@@ -672,6 +690,18 @@ function normalizeRewardRequirements(requirements) {
         ? requirements.text.trim()
         : '无额外条件',
     minCompletionRate: clampNumber(requirements.minCompletionRate, 0, 100, 0),
+    minWeekCompletionRate: clampNumber(
+      requirements.minWeekCompletionRate,
+      0,
+      100,
+      0,
+    ),
+    minMonthCompletionRate: clampNumber(
+      requirements.minMonthCompletionRate,
+      0,
+      100,
+      0,
+    ),
     minStreak: clampNumber(requirements.minStreak, 0, 365, 0),
     minLevel: clampNumber(requirements.minLevel, 1, 99, 1),
   }
@@ -1072,7 +1102,8 @@ function getRewardEvaluationPrompt() {
     '请根据奖励带来的即时快乐、金钱成本、时间消耗、成瘾风险和恢复价值，设置金币价格与解锁条件。',
     '只返回 JSON，不要返回 Markdown。',
     'JSON 必须包含：title 字符串，cost 数字，tone 字符串，requirement 字符串，reason 字符串，requirements 对象。',
-    'requirements 对象必须包含：minCompletionRate 数字 0-100，minStreak 数字，minLevel 数字，text 字符串。',
+    'requirements 对象必须包含：minCompletionRate 数字 0-100，minWeekCompletionRate 数字 0-100，minMonthCompletionRate 数字 0-100，minStreak 数字，minLevel 数字，text 字符串。',
+    '大于等于 60 金币的大奖励必须设置周平均完成率或月平均完成率门槛，通常在 70-90 之间。',
     'cost 必须在 5 到 120 之间；普通小奖励 8-20，中等奖励 20-45，高时间消耗或高诱惑奖励 45-100。',
   ].join('\n')
 }
@@ -1605,6 +1636,14 @@ function App() {
     () => getCompletionStreak(tasks, habits, rewardDate),
     [habits, rewardDate, tasks],
   )
+  const weekAverageCompletionRate = useMemo(
+    () => getAverageCompletionRate(tasks, habits, getPeriodRange('week', rewardDate)),
+    [habits, rewardDate, tasks],
+  )
+  const monthAverageCompletionRate = useMemo(
+    () => getAverageCompletionRate(tasks, habits, getPeriodRange('month', rewardDate)),
+    [habits, rewardDate, tasks],
+  )
   const weekEarnedCoins = useMemo(() => {
     const weekStart = getWeekStart(rewardDate)
     const weekEnd = shiftDate(weekStart, 6)
@@ -1969,6 +2008,11 @@ function App() {
           completionRate: rewardStats.completionRate,
           totalTasks: rewardStats.total,
           completedTasks: rewardStats.completed,
+        },
+        longTermPerformance: {
+          weekAverageCompletionRate,
+          monthAverageCompletionRate,
+          completionStreak,
         },
         existingRewards: rewardShopItems.map((item) => ({
           title: item.title,
@@ -2486,6 +2530,12 @@ function App() {
       if (rewardStats.completionRate < requirements.minCompletionRate) {
         lockedReasons.push(`今日完成率需 ${requirements.minCompletionRate}%`)
       }
+      if (weekAverageCompletionRate < requirements.minWeekCompletionRate) {
+        lockedReasons.push(`周平均完成率需 ${requirements.minWeekCompletionRate}%`)
+      }
+      if (monthAverageCompletionRate < requirements.minMonthCompletionRate) {
+        lockedReasons.push(`月平均完成率需 ${requirements.minMonthCompletionRate}%`)
+      }
       if (completionStreak < requirements.minStreak) {
         lockedReasons.push(`连续高完成需 ${requirements.minStreak} 天`)
       }
@@ -2536,6 +2586,14 @@ function App() {
           <article>
             <strong>{rewardStats.completionRate}%</strong>
             <span>今日完成率</span>
+          </article>
+          <article>
+            <strong>{weekAverageCompletionRate}%</strong>
+            <span>周平均</span>
+          </article>
+          <article>
+            <strong>{monthAverageCompletionRate}%</strong>
+            <span>月平均</span>
           </article>
         </div>
 

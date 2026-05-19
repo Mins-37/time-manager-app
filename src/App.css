@@ -812,7 +812,7 @@ select {
 
 .reward-stat-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -827,7 +827,7 @@ select {
 .reward-stat-grid strong {
   display: block;
   color: #203f34;
-  font-size: 24px;
+  font-size: 20px;
   line-height: 1;
 }
 
