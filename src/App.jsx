@@ -1748,41 +1748,44 @@ function App() {
 
         <section className="review-editor" aria-label="每日总结编辑">
           <div className="review-editor-head">
-            <div>
+            <div className="review-editor-title">
               <span>{formatDateLabel(reviewDate)}</span>
               <strong>
                 {reviewTasks.length} 项 · 完成率 {reviewCompletionRate}%
               </strong>
             </div>
-            <div className="review-scope-tabs" aria-label="分析范围">
-              {REVIEW_SCOPES.map((scope) => (
-                <button
-                  className={reviewScope === scope.id ? 'is-active' : ''}
-                  key={scope.id}
-                  type="button"
-                  onClick={() => setReviewScope(scope.id)}
-                >
-                  {scope.label}
-                </button>
-              ))}
+            <div className="review-ai-toolbar">
+              <div className="review-scope-tabs" aria-label="分析范围">
+                {REVIEW_SCOPES.map((scope) => (
+                  <button
+                    className={reviewScope === scope.id ? 'is-active' : ''}
+                    key={scope.id}
+                    type="button"
+                    onClick={() => setReviewScope(scope.id)}
+                  >
+                    {scope.label}
+                  </button>
+                ))}
+              </div>
+              <button
+                className="review-ai-button"
+                type="button"
+                disabled={aiAnalysisStatus === 'loading'}
+                onClick={analyzeReviewPeriod}
+              >
+                {aiAnalysisStatus === 'loading'
+                  ? '分析中'
+                  : `AI${getReviewScopeLabel(reviewScope)}`}
+              </button>
+              <button
+                className="review-ai-config-button"
+                type="button"
+                onClick={openAiConfigPanel}
+                aria-label="AI 接口设置"
+              >
+                接口
+              </button>
             </div>
-            <button
-              className="review-ai-button"
-              type="button"
-              disabled={aiAnalysisStatus === 'loading'}
-              onClick={analyzeReviewPeriod}
-            >
-              {aiAnalysisStatus === 'loading'
-                ? '分析中'
-                : `AI 分析${getReviewScopeLabel(reviewScope)}`}
-            </button>
-            <button
-              className="review-ai-config-button"
-              type="button"
-              onClick={openAiConfigPanel}
-            >
-              接口
-            </button>
           </div>
           {aiAnalysisError ? (
             <div className="review-ai-error">{aiAnalysisError}</div>

@@ -755,7 +755,7 @@ select {
 }
 
 .review-view.has-analysis {
-  grid-template-rows: auto auto minmax(96px, 0.52fr) minmax(320px, 1.1fr);
+  grid-template-rows: auto auto minmax(72px, 0.22fr) minmax(390px, 1.42fr);
 }
 
 .review-header {
@@ -816,6 +816,10 @@ select {
   scroll-snap-type: y proximity;
 }
 
+.review-view.has-analysis .review-calendar {
+  padding-bottom: 8px;
+}
+
 .review-week {
   gap: 7px;
   scroll-snap-align: start;
@@ -833,6 +837,10 @@ select {
   background: rgba(255, 253, 250, 0.84);
   color: #303330;
   cursor: pointer;
+}
+
+.review-view.has-analysis .review-day {
+  min-height: 48px;
 }
 
 .review-day.month-even {
@@ -887,7 +895,7 @@ select {
 
 .review-editor {
   display: grid;
-  grid-template-rows: auto minmax(92px, 0.72fr) minmax(0, 1.28fr);
+  grid-template-rows: auto minmax(78px, 0.52fr) minmax(0, 1.48fr);
   gap: 10px;
   min-height: 0;
   padding: 14px;
@@ -897,10 +905,9 @@ select {
 
 .review-editor-head {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .review-editor-head span,
@@ -919,21 +926,41 @@ select {
   font-size: 12px;
 }
 
+.review-editor-title {
+  min-width: 0;
+}
+
+.review-editor-title span,
+.review-editor-title strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.review-ai-toolbar {
+  display: grid;
+  grid-template-columns: minmax(104px, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .review-ai-button,
 .review-ai-config-button {
   flex: 0 0 auto;
-  min-height: 34px;
+  min-height: 30px;
   border: 1px solid #d7d1c4;
   border-radius: 7px;
   background: #fffdfa;
   color: #9a7d61;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
   cursor: pointer;
 }
 
 .review-ai-config-button {
-  min-width: 44px;
+  min-width: 38px;
   color: #203f34;
 }
 
@@ -945,8 +972,7 @@ select {
 .review-scope-tabs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  flex: 1 1 140px;
-  min-width: 132px;
+  min-width: 0;
   gap: 3px;
   padding: 3px;
   border: 1px solid #d7d1c4;
@@ -955,12 +981,12 @@ select {
 }
 
 .review-scope-tabs button {
-  min-height: 28px;
+  min-height: 24px;
   border: 0;
   border-radius: 5px;
   background: transparent;
   color: #626a65;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
   cursor: pointer;
 }
