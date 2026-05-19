@@ -13,7 +13,7 @@
 .phone-shell {
   position: relative;
   display: grid;
-  grid-template-rows: 74px minmax(0, 1fr) 68px;
+  grid-template-rows: minmax(0, 1fr) 68px;
   width: min(480px, 100%);
   height: min(860px, calc(100vh - 32px));
   min-height: 640px;
@@ -24,14 +24,22 @@
   box-shadow: 0 24px 70px rgba(45, 49, 43, 0.14);
 }
 
+.phone-shell.has-date-rail {
+  grid-template-rows: 74px minmax(0, 1fr) 68px;
+}
+
 .phone-shell::before {
   content: '';
   position: absolute;
-  inset: 74px 0 68px;
+  inset: 0 0 68px;
   pointer-events: none;
   background:
     linear-gradient(135deg, rgba(81, 115, 91, 0.08), transparent 42%),
     linear-gradient(315deg, rgba(141, 81, 73, 0.05), transparent 38%);
+}
+
+.phone-shell.has-date-rail::before {
+  inset: 74px 0 68px;
 }
 
 .phone-shell.is-dragging,
@@ -640,6 +648,188 @@ select {
 .placeholder-view p {
   margin: 0;
   color: #68706d;
+}
+
+.review-view {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) minmax(188px, 34%);
+  height: 100%;
+  min-height: 0;
+  background: rgba(255, 253, 250, 0.82);
+}
+
+.review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid #ddd7ca;
+  color: #203f34;
+}
+
+.review-header span {
+  display: block;
+  color: #68706d;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.review-header h1 {
+  margin: 4px 0 0;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.review-today {
+  min-width: 64px;
+  min-height: 38px;
+  border: 1px solid #d7d1c4;
+  border-radius: 7px;
+  background: #fffdfa;
+  color: #203f34;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.review-weekdays,
+.review-week {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.review-weekdays {
+  padding: 10px 14px 6px;
+  color: #7d827b;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.review-calendar {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 0;
+  padding: 0 14px 14px;
+  overflow-y: auto;
+  scroll-snap-type: y proximity;
+}
+
+.review-week {
+  gap: 7px;
+  scroll-snap-align: start;
+}
+
+.review-day {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 58px;
+  border: 1px solid #ddd7ca;
+  border-radius: 7px;
+  background: rgba(255, 253, 250, 0.84);
+  color: #303330;
+  cursor: pointer;
+}
+
+.review-day strong {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.review-day small {
+  color: #68706d;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.review-day.has-review::after {
+  content: '';
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f4bda2;
+}
+
+.review-day.is-today {
+  border-color: #9fb391;
+  background: #e7efe4;
+}
+
+.review-day.is-selected {
+  border-color: #203f34;
+  background: #203f34;
+  color: #fffdfa;
+}
+
+.review-day.is-selected small {
+  color: rgba(255, 253, 250, 0.78);
+}
+
+.review-editor {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+  padding: 14px;
+  border-top: 1px solid #ddd7ca;
+  background: rgba(240, 238, 231, 0.74);
+}
+
+.review-editor-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.review-editor-head span,
+.review-editor-head strong {
+  display: block;
+}
+
+.review-editor-head span {
+  color: #203f34;
+  font-weight: 900;
+}
+
+.review-editor-head strong {
+  margin-top: 3px;
+  color: #68706d;
+  font-size: 12px;
+}
+
+.review-editor-head em {
+  flex: 0 0 auto;
+  color: #9a7d61;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.review-editor textarea {
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  box-sizing: border-box;
+  border: 1px solid #d7d1c4;
+  border-radius: 7px;
+  background: #fffdfa;
+  color: #202326;
+  padding: 12px;
+  font: inherit;
+  line-height: 1.5;
+}
+
+.review-editor textarea:focus {
+  border-color: #3c6b51;
+  outline: 3px solid rgba(60, 107, 81, 0.18);
 }
 
 .task-panel-backdrop {

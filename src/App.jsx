@@ -3,6 +3,7 @@ import './App.css'
 
 const STORAGE_KEY = 'time-manager-tasks'
 const HABIT_STORAGE_KEY = 'time-manager-habits'
+const REVIEW_STORAGE_KEY = 'time-manager-daily-reviews'
 const COIN_STORAGE_KEY = 'time-manager-coins'
 const COINS_PER_COMPLETION = 1
 
@@ -30,6 +31,8 @@ const TABS = [
 
 const DATE_RAIL_PAST_DAYS = 21
 const DATE_RAIL_TOTAL_DAYS = 90
+const REVIEW_PAST_WEEKS = 12
+const REVIEW_TOTAL_WEEKS = 32
 const REFERENCE_WEEK_SUNDAY = '2026-05-24'
 const REFERENCE_WEEK_NUMBER = 12
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -110,6 +113,14 @@ function isSunday(dateString) {
   return parseDate(dateString).getDay() === 0
 }
 
+function getWeekStart(dateString) {
+  const date = parseDate(dateString)
+  const weekday = date.getDay()
+  const mondayOffset = weekday === 0 ? -6 : 1 - weekday
+  date.setDate(date.getDate() + mondayOffset)
+  return getDateString(date)
+}
+
 function getCustomWeekNumber(dateString) {
   const date = parseDate(dateString)
   const referenceDate = parseDate(REFERENCE_WEEK_SUNDAY)
@@ -118,6 +129,11 @@ function getCustomWeekNumber(dateString) {
   )
 
   return REFERENCE_WEEK_NUMBER + Math.round(dayDifference / 7)
+}
+
+function formatMonthLabel(dateString) {
+  const [year, month] = dateString.split('-').map(Number)
+  return `${year}年${month}月`
 }
 
 function formatDateLabel(dateString) {
@@ -179,6 +195,18 @@ function normalizeTasks(savedTasks) {
     })
 }
 
+function getTasksForDate(allTasks, allHabits, date) {
+  const weekday = parseDate(date).getDay()
+  const dailyTasks = allTasks
+    .filter((task) => task.taskDate === date)
+    .map(createTaskInstance)
+  const habitTasks = allHabits
+    .filter((habit) => habit.weekdays.includes(weekday))
+    .map((habit) => createHabitInstance(habit, date))
+
+  return [...dailyTasks, ...habitTasks]
+}
+
 function normalizeHabits(savedHabits) {
   if (!Array.isArray(savedHabits)) {
     return []
@@ -216,6 +244,24 @@ function normalizeHabits(savedHabits) {
     })
 }
 
+function normalizeReviews(savedReviews) {
+  if (!savedReviews || typeof savedReviews !== 'object' || Array.isArray(savedReviews)) {
+    return {}
+  }
+
+  return Object.fromEntries(
+    Object.entries(savedReviews)
+      .filter(([date, review]) => typeof date === 'string' && review)
+      .map(([date, review]) => [
+        date,
+        {
+          note: typeof review.note === 'string' ? review.note : '',
+          updatedAt: review.updatedAt || null,
+        },
+      ]),
+  )
+}
+
 function loadTasks() {
   try {
     const savedTasks = localStorage.getItem(STORAGE_KEY)
@@ -231,6 +277,15 @@ function loadHabits() {
     return savedHabits ? normalizeHabits(JSON.parse(savedHabits)) : []
   } catch {
     return []
+  }
+}
+
+function loadReviews() {
+  try {
+    const savedReviews = localStorage.getItem(REVIEW_STORAGE_KEY)
+    return savedReviews ? normalizeReviews(JSON.parse(savedReviews)) : {}
+  } catch {
+    return {}
   }
 }
 
@@ -313,8 +368,10 @@ function vibrateOnComplete() {
 function App() {
   const [tasks, setTasks] = useState(loadTasks)
   const [habits, setHabits] = useState(loadHabits)
+  const [dailyReviews, setDailyReviews] = useState(loadReviews)
   const [coins, setCoins] = useState(loadCoins)
   const [selectedDate, setSelectedDate] = useState(getDateString)
+  const [reviewDate, setReviewDate] = useState(getDateString)
   const [dateRailAnchor] = useState(getDateString)
   const [activeTab, setActiveTab] = useState('plan')
   const [selectedSlotId, setSelectedSlotId] = useState(null)
@@ -331,6 +388,7 @@ function App() {
   const didLongPressRef = useRef(false)
   const didDragTaskRef = useRef(false)
   const dateRailRef = useRef(null)
+  const reviewCalendarRef = useRef(null)
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks))
@@ -341,8 +399,28 @@ function App() {
   }, [habits])
 
   useEffect(() => {
+    localStorage.setItem(REVIEW_STORAGE_KEY, JSON.stringify(dailyReviews))
+  }, [dailyReviews])
+
+  useEffect(() => {
     localStorage.setItem(COIN_STORAGE_KEY, String(coins))
   }, [coins])
+
+  useEffect(() => {
+    if (activeTab !== 'review') {
+      return
+    }
+
+    requestAnimationFrame(() => {
+      reviewCalendarRef.current
+        ?.querySelector(`[data-review-date="${reviewDate}"]`)
+        ?.closest('.review-week')
+        ?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        })
+    })
+  }, [activeTab, reviewDate])
 
   useEffect(() => {
     if (!dragState) {
@@ -446,17 +524,34 @@ function App() {
     )
   }, [dateRailAnchor])
 
-  const selectedTasks = useMemo(() => {
-    const weekday = parseDate(selectedDate).getDay()
-    const dailyTasks = tasks
-      .filter((task) => task.taskDate === selectedDate)
-      .map(createTaskInstance)
-    const habitTasks = habits
-      .filter((habit) => habit.weekdays.includes(weekday))
-      .map((habit) => createHabitInstance(habit, selectedDate))
+  const selectedTasks = useMemo(
+    () => getTasksForDate(tasks, habits, selectedDate),
+    [habits, selectedDate, tasks],
+  )
+  const reviewWeeks = useMemo(() => {
+    const currentWeekStart = getWeekStart(getDateString())
 
-    return [...dailyTasks, ...habitTasks]
-  }, [habits, selectedDate, tasks])
+    return Array.from({ length: REVIEW_TOTAL_WEEKS }, (_, weekIndex) => {
+      const weekStart = shiftDate(
+        currentWeekStart,
+        (weekIndex - REVIEW_PAST_WEEKS) * 7,
+      )
+
+      return Array.from({ length: 7 }, (_, dayIndex) =>
+        shiftDate(weekStart, dayIndex),
+      )
+    })
+  }, [])
+  const reviewTasks = useMemo(
+    () => getTasksForDate(tasks, habits, reviewDate),
+    [habits, reviewDate, tasks],
+  )
+  const reviewCompletedCount = reviewTasks.filter((task) => task.completed).length
+  const reviewCompletionRate =
+    reviewTasks.length === 0
+      ? 0
+      : Math.round((reviewCompletedCount / reviewTasks.length) * 100)
+  const reviewText = dailyReviews[reviewDate]?.note || ''
   const selectedSlot = TIME_SLOTS.find((slot) => slot.id === selectedSlotId)
   const selectedSlotTasks = useMemo(
     () => selectedTasks.filter((task) => task.slotId === selectedSlotId),
@@ -556,6 +651,16 @@ function App() {
 
   function updateTaskForm(field, value) {
     setTaskForm((currentForm) => ({ ...currentForm, [field]: value }))
+  }
+
+  function updateDailyReview(date, note) {
+    setDailyReviews((currentReviews) => ({
+      ...currentReviews,
+      [date]: {
+        note,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
   }
 
   function toggleHabitWeekday(weekday) {
@@ -865,6 +970,82 @@ function App() {
     )
   }
 
+  function renderReviewView() {
+    return (
+      <section className="review-view" aria-label="总结复盘">
+        <div className="review-header">
+          <div>
+            <span>总结复盘</span>
+            <h1>{formatMonthLabel(reviewDate)}</h1>
+          </div>
+          <button
+            className="review-today"
+            type="button"
+            onClick={() => setReviewDate(getDateString())}
+          >
+            今天
+          </button>
+        </div>
+
+        <div className="review-weekdays" aria-hidden="true">
+          {WEEKDAY_OPTIONS.slice(1)
+            .concat(WEEKDAY_OPTIONS[0])
+            .map((weekday) => (
+              <span key={weekday.value}>{weekday.label.replace('周', '')}</span>
+            ))}
+        </div>
+
+        <div className="review-calendar" aria-label="复盘日历" ref={reviewCalendarRef}>
+          {reviewWeeks.map((week) => (
+            <div className="review-week" key={week[0]}>
+              {week.map((date) => {
+                const dayTasks = getTasksForDate(tasks, habits, date)
+                const doneCount = dayTasks.filter((task) => task.completed).length
+                const hasReview = Boolean(dailyReviews[date]?.note?.trim())
+                const isSelected = date === reviewDate
+                const isToday = date === getDateString()
+
+                return (
+                  <button
+                    className={`review-day ${isSelected ? 'is-selected' : ''} ${
+                      isToday ? 'is-today' : ''
+                    } ${hasReview ? 'has-review' : ''}`}
+                    key={date}
+                    data-review-date={date}
+                    type="button"
+                    onClick={() => setReviewDate(date)}
+                  >
+                    <strong>{parseDate(date).getDate()}</strong>
+                    <small>
+                      {dayTasks.length === 0 ? '无' : `${doneCount}/${dayTasks.length}`}
+                    </small>
+                  </button>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+
+        <section className="review-editor" aria-label="每日总结编辑">
+          <div className="review-editor-head">
+            <div>
+              <span>{formatDateLabel(reviewDate)}</span>
+              <strong>
+                {reviewTasks.length} 项 · 完成率 {reviewCompletionRate}%
+              </strong>
+            </div>
+            <em>AI 分析预留</em>
+          </div>
+          <textarea
+            value={reviewText}
+            onChange={(event) => updateDailyReview(reviewDate, event.target.value)}
+            placeholder="写下今天发生了什么、做得好的地方、卡住的地方，或者明天想调整的事。"
+          />
+        </section>
+      </section>
+    )
+  }
+
   function renderSlotDetail() {
     return (
       <section className="slot-detail" aria-label="时段任务详情">
@@ -900,27 +1081,33 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className={`phone-shell ${dragState?.isDragging ? 'is-dragging' : ''}`}>
-        <header className="date-rail" aria-label="日期栏" ref={dateRailRef}>
-          {dateRail.map((date) => (
-            <button
-              className={`date-chip ${
-                date === selectedDate ? 'is-selected' : ''
-              } ${isWeekend(date) ? 'is-weekend' : ''}`}
-              key={date}
-              data-date={date}
-              type="button"
-              onClick={() => selectDate(date)}
-              onDoubleClick={() => handleDateDoubleClick(date)}
-            >
-              <span className="date-number">{formatDateChip(date)}</span>
-              <span className="weekday-label">{getWeekdayLabel(date)}</span>
-              {isSunday(date) ? (
-                <small className="week-number">{getCustomWeekNumber(date)}</small>
-              ) : null}
-            </button>
-          ))}
-        </header>
+      <section
+        className={`phone-shell ${activeTab === 'plan' ? 'has-date-rail' : ''} ${
+          dragState?.isDragging ? 'is-dragging' : ''
+        }`}
+      >
+        {activeTab === 'plan' ? (
+          <header className="date-rail" aria-label="日期栏" ref={dateRailRef}>
+            {dateRail.map((date) => (
+              <button
+                className={`date-chip ${
+                  date === selectedDate ? 'is-selected' : ''
+                } ${isWeekend(date) ? 'is-weekend' : ''}`}
+                key={date}
+                data-date={date}
+                type="button"
+                onClick={() => selectDate(date)}
+                onDoubleClick={() => handleDateDoubleClick(date)}
+              >
+                <span className="date-number">{formatDateChip(date)}</span>
+                <span className="weekday-label">{getWeekdayLabel(date)}</span>
+                {isSunday(date) ? (
+                  <small className="week-number">{getCustomWeekNumber(date)}</small>
+                ) : null}
+              </button>
+            ))}
+          </header>
+        ) : null}
 
         <section className="tab-content">
           {activeTab === 'plan' ? (
@@ -991,6 +1178,8 @@ function App() {
                 </section>
               )}
             </div>
+          ) : activeTab === 'review' ? (
+            renderReviewView()
           ) : (
             <section className="placeholder-view">
               <h1>{TABS.find((tab) => tab.id === activeTab)?.label}</h1>
@@ -999,14 +1188,16 @@ function App() {
           )}
         </section>
 
-        <button
-          className="floating-add"
-          type="button"
-          aria-label="添加任务"
-          onClick={() => openCreatePanel(selectedSlotId || '')}
-        >
-          +
-        </button>
+        {activeTab === 'plan' ? (
+          <button
+            className="floating-add"
+            type="button"
+            aria-label="添加任务"
+            onClick={() => openCreatePanel(selectedSlotId || '')}
+          >
+            +
+          </button>
+        ) : null}
 
         <nav className="bottom-tabs" aria-label="主菜单">
           {TABS.map((tab) => (
