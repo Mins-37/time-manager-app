@@ -9,6 +9,7 @@ const AI_CONFIG_STORAGE_KEY = 'time-manager-ai-config'
 const COIN_STORAGE_KEY = 'time-manager-coins'
 const COIN_EVENTS_STORAGE_KEY = 'time-manager-coin-events'
 const REWARD_SETTLEMENTS_STORAGE_KEY = 'time-manager-reward-settlements'
+const CUSTOM_REWARDS_STORAGE_KEY = 'time-manager-custom-rewards'
 const COINS_PER_COMPLETION = 1
 const MAX_COIN_EVENTS = 120
 
@@ -92,6 +93,10 @@ const PLAYER_TITLES = [
   '时间建筑师',
   '长期主义者',
 ]
+const EMPTY_CUSTOM_REWARD_FORM = {
+  title: '',
+  note: '',
+}
 
 const QUADRANTS = [
   {
@@ -488,6 +493,15 @@ function formatCoinAmount(amount) {
   return amount > 0 ? `+${amount}` : String(amount)
 }
 
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) {
+    return fallback
+  }
+
+  return Math.min(max, Math.max(min, Math.round(number)))
+}
+
 function normalizeHabits(savedHabits) {
   if (!Array.isArray(savedHabits)) {
     return []
@@ -642,6 +656,57 @@ function normalizeRewardSettlements(savedSettlements) {
   )
 }
 
+function normalizeRewardRequirements(requirements) {
+  if (!requirements || typeof requirements !== 'object') {
+    return {
+      text: '无额外条件',
+      minCompletionRate: 0,
+      minStreak: 0,
+      minLevel: 1,
+    }
+  }
+
+  return {
+    text:
+      typeof requirements.text === 'string' && requirements.text.trim()
+        ? requirements.text.trim()
+        : '无额外条件',
+    minCompletionRate: clampNumber(requirements.minCompletionRate, 0, 100, 0),
+    minStreak: clampNumber(requirements.minStreak, 0, 365, 0),
+    minLevel: clampNumber(requirements.minLevel, 1, 99, 1),
+  }
+}
+
+function normalizeCustomRewards(savedRewards) {
+  if (!Array.isArray(savedRewards)) {
+    return []
+  }
+
+  return savedRewards
+    .filter((reward) => reward && typeof reward.title === 'string')
+    .map((reward) => ({
+      id: reward.id || createId(),
+      title: reward.title.trim(),
+      cost: clampNumber(reward.cost, 1, 300, 20),
+      tone:
+        typeof reward.tone === 'string' && reward.tone.trim()
+          ? reward.tone.trim()
+          : 'AI 鉴定',
+      requirement:
+        typeof reward.requirement === 'string' && reward.requirement.trim()
+          ? reward.requirement.trim()
+          : '无额外条件',
+      requirements: normalizeRewardRequirements(reward.requirements),
+      reason:
+        typeof reward.reason === 'string' && reward.reason.trim()
+          ? reward.reason.trim()
+          : '',
+      custom: true,
+      createdAt: reward.createdAt || new Date().toISOString(),
+    }))
+    .filter((reward) => reward.title)
+}
+
 function loadTasks() {
   try {
     const savedTasks = localStorage.getItem(STORAGE_KEY)
@@ -713,6 +778,15 @@ function loadRewardSettlements() {
       : {}
   } catch {
     return {}
+  }
+}
+
+function loadCustomRewards() {
+  try {
+    const savedRewards = localStorage.getItem(CUSTOM_REWARDS_STORAGE_KEY)
+    return savedRewards ? normalizeCustomRewards(JSON.parse(savedRewards)) : []
+  } catch {
+    return []
   }
 }
 
@@ -991,6 +1065,18 @@ function getAnalysisPrompt() {
   ].join('\n')
 }
 
+function getRewardEvaluationPrompt() {
+  return [
+    '你是一个时间管理 App 的游戏经济设计师，负责给用户自定义奖励做公平定价。',
+    '目标是让奖励足够有吸引力，但不能太便宜，也不能鼓励逃避重要任务。',
+    '请根据奖励带来的即时快乐、金钱成本、时间消耗、成瘾风险和恢复价值，设置金币价格与解锁条件。',
+    '只返回 JSON，不要返回 Markdown。',
+    'JSON 必须包含：title 字符串，cost 数字，tone 字符串，requirement 字符串，reason 字符串，requirements 对象。',
+    'requirements 对象必须包含：minCompletionRate 数字 0-100，minStreak 数字，minLevel 数字，text 字符串。',
+    'cost 必须在 5 到 120 之间；普通小奖励 8-20，中等奖励 20-45，高时间消耗或高诱惑奖励 45-100。',
+  ].join('\n')
+}
+
 function normalizeAiAnalysis(rawAnalysis, payload) {
   const fallbackAnalysis = createMockReviewAnalysis(payload)
   const analysis = rawAnalysis?.analysis || rawAnalysis
@@ -1100,6 +1186,74 @@ async function requestAiAnalysis(aiConfig, payload) {
   return normalizeAiAnalysis(extractAiJson(data), payload)
 }
 
+async function requestAiRewardEvaluation(aiConfig, payload) {
+  const headers = {
+    'Content-Type': 'application/json',
+  }
+
+  if (aiConfig.apiKey.trim()) {
+    headers.Authorization = `Bearer ${aiConfig.apiKey.trim()}`
+  }
+
+  const body =
+    aiConfig.mode === 'custom'
+      ? {
+          payload,
+          instruction: getRewardEvaluationPrompt(),
+        }
+      : {
+          ...(aiConfig.model.trim() ? { model: aiConfig.model.trim() } : {}),
+          messages: [
+            {
+              role: 'system',
+              content: getRewardEvaluationPrompt(),
+            },
+            {
+              role: 'user',
+              content: JSON.stringify(payload),
+            },
+          ],
+          temperature: 0.2,
+        }
+
+  const response = await fetch(aiConfig.endpoint.trim(), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    throw new Error(`接口返回 ${response.status}`)
+  }
+
+  const data = await response.json()
+  const reward = extractAiJson(data)
+
+  return {
+    id: createId(),
+    title:
+      typeof reward.title === 'string' && reward.title.trim()
+        ? reward.title.trim()
+        : payload.title,
+    cost: clampNumber(reward.cost, 5, 120, 20),
+    tone:
+      typeof reward.tone === 'string' && reward.tone.trim()
+        ? reward.tone.trim()
+        : 'AI 鉴定',
+    requirement:
+      typeof reward.requirement === 'string' && reward.requirement.trim()
+        ? reward.requirement.trim()
+        : normalizeRewardRequirements(reward.requirements).text,
+    requirements: normalizeRewardRequirements(reward.requirements),
+    reason:
+      typeof reward.reason === 'string' && reward.reason.trim()
+        ? reward.reason.trim()
+        : 'AI 已根据奖励强度给出估价。',
+    custom: true,
+    createdAt: new Date().toISOString(),
+  }
+}
+
 function vibrateOnComplete() {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     navigator.vibrate(18)
@@ -1127,6 +1281,13 @@ function App() {
   const [coins, setCoins] = useState(loadCoins)
   const [coinEvents, setCoinEvents] = useState(loadCoinEvents)
   const [rewardSettlements, setRewardSettlements] = useState(loadRewardSettlements)
+  const [customRewards, setCustomRewards] = useState(loadCustomRewards)
+  const [isRewardPanelOpen, setIsRewardPanelOpen] = useState(false)
+  const [customRewardForm, setCustomRewardForm] = useState(
+    EMPTY_CUSTOM_REWARD_FORM,
+  )
+  const [rewardAiStatus, setRewardAiStatus] = useState('idle')
+  const [rewardAiError, setRewardAiError] = useState('')
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [reviewDate, setReviewDate] = useState(getDateString)
   const [reviewScope, setReviewScope] = useState('day')
@@ -1189,6 +1350,10 @@ function App() {
       JSON.stringify(rewardSettlements),
     )
   }, [rewardSettlements])
+
+  useEffect(() => {
+    localStorage.setItem(CUSTOM_REWARDS_STORAGE_KEY, JSON.stringify(customRewards))
+  }, [customRewards])
 
   useEffect(() => {
     const updateCurrentMinute = () => setCurrentMinute(getCurrentMinute())
@@ -1452,6 +1617,10 @@ function App() {
       .reduce((total, event) => total + event.amount, 0)
   }, [coinEvents, rewardDate])
   const todayCoinEvents = coinEvents.filter((event) => event.date === rewardDate)
+  const rewardShopItems = useMemo(
+    () => [...REWARD_ITEMS, ...customRewards],
+    [customRewards],
+  )
 
   function selectDate(nextDate) {
     setSelectedDate(nextDate)
@@ -1569,6 +1738,10 @@ function App() {
 
   function updateAiConfigForm(field, value) {
     setAiConfigForm((currentForm) => ({ ...currentForm, [field]: value }))
+  }
+
+  function updateCustomRewardForm(field, value) {
+    setCustomRewardForm((currentForm) => ({ ...currentForm, [field]: value }))
   }
 
   function openAiConfigPanel() {
@@ -1753,6 +1926,77 @@ function App() {
       date: rewardDate,
       sourceId: item.id,
     })
+  }
+
+  function openCustomRewardPanel() {
+    setCustomRewardForm(EMPTY_CUSTOM_REWARD_FORM)
+    setRewardAiError('')
+    setIsRewardPanelOpen(true)
+  }
+
+  function closeCustomRewardPanel() {
+    setIsRewardPanelOpen(false)
+    setCustomRewardForm(EMPTY_CUSTOM_REWARD_FORM)
+    setRewardAiStatus('idle')
+    setRewardAiError('')
+  }
+
+  async function createCustomReward(event) {
+    event.preventDefault()
+
+    if (!customRewardForm.title.trim() || rewardAiStatus === 'loading') {
+      return
+    }
+
+    if (!aiConfig?.endpoint?.trim()) {
+      setRewardAiError('请先设置 AI 接口，奖品价格和条件必须由 AI 鉴定。')
+      openAiConfigPanel()
+      return
+    }
+
+    setRewardAiStatus('loading')
+    setRewardAiError('')
+
+    try {
+      const evaluatedReward = await requestAiRewardEvaluation(aiConfig, {
+        title: customRewardForm.title.trim(),
+        note: customRewardForm.note.trim(),
+        currentCoins: coins,
+        playerLevel: playerLevel.level,
+        playerTitle: playerLevel.title,
+        completionStreak,
+        today: {
+          completionRate: rewardStats.completionRate,
+          totalTasks: rewardStats.total,
+          completedTasks: rewardStats.completed,
+        },
+        existingRewards: rewardShopItems.map((item) => ({
+          title: item.title,
+          cost: item.cost,
+          requirement: item.requirement || '',
+        })),
+      })
+
+      setCustomRewards((currentRewards) => [
+        evaluatedReward,
+        ...currentRewards,
+      ])
+      setRewardAiStatus('idle')
+      closeCustomRewardPanel()
+    } catch (error) {
+      setRewardAiStatus('idle')
+      setRewardAiError(
+        error instanceof Error
+          ? error.message
+          : 'AI 奖品鉴定失败，请检查接口设置。',
+      )
+    }
+  }
+
+  function deleteCustomReward(itemId) {
+    setCustomRewards((currentRewards) =>
+      currentRewards.filter((reward) => reward.id !== itemId),
+    )
   }
 
   function saveTask(event) {
@@ -2230,6 +2474,32 @@ function App() {
     )
   }
 
+  function getRewardRequirementStatus(item, isRewardLocked) {
+    const lockedReasons = []
+
+    if (isRewardLocked && item.cost >= 30) {
+      lockedReasons.push('今日完成率需达到 80%')
+    }
+
+    const requirements = item.requirements
+    if (requirements) {
+      if (rewardStats.completionRate < requirements.minCompletionRate) {
+        lockedReasons.push(`今日完成率需 ${requirements.minCompletionRate}%`)
+      }
+      if (completionStreak < requirements.minStreak) {
+        lockedReasons.push(`连续高完成需 ${requirements.minStreak} 天`)
+      }
+      if (playerLevel.level < requirements.minLevel) {
+        lockedReasons.push(`等级需 Lv.${requirements.minLevel}`)
+      }
+    }
+
+    return {
+      unlocked: lockedReasons.length === 0,
+      label: lockedReasons[0] || item.requirement || item.requirements?.text || '',
+    }
+  }
+
   function renderRewardView() {
     const settlementButtonText = rewardSettlement
       ? '今日已结算'
@@ -2314,22 +2584,58 @@ function App() {
           ) : null}
 
           <div className="reward-shop-list">
-            {REWARD_ITEMS.map((item) => (
-              <article className="reward-card" key={item.id}>
-                <div>
-                  <span>{item.tone}</span>
-                  <strong>{item.title}</strong>
-                </div>
-                <button
-                  type="button"
-                  disabled={coins < item.cost || (isRewardLocked && item.cost >= 30)}
-                  onClick={() => redeemReward(item)}
+            {rewardShopItems.map((item) => {
+              const requirementStatus = getRewardRequirementStatus(
+                item,
+                isRewardLocked,
+              )
+              const canRedeem = coins >= item.cost && requirementStatus.unlocked
+
+              return (
+                <article
+                  className={`reward-card ${item.custom ? 'is-custom' : ''}`}
+                  key={item.id}
                 >
-                  {isRewardLocked && item.cost >= 30 ? '需80%' : `${item.cost} 金币`}
-                </button>
-              </article>
-            ))}
+                  <div>
+                    <span>{item.tone}</span>
+                    <strong>{item.title}</strong>
+                    {requirementStatus.label ? (
+                      <small>{requirementStatus.label}</small>
+                    ) : null}
+                    {item.reason ? <p>{item.reason}</p> : null}
+                  </div>
+                  <div className="reward-card-actions">
+                    <button
+                      type="button"
+                      disabled={!canRedeem}
+                      onClick={() => redeemReward(item)}
+                    >
+                      {requirementStatus.unlocked
+                        ? `${item.cost} 金币`
+                        : '未解锁'}
+                    </button>
+                    {item.custom ? (
+                      <button
+                        className="reward-delete"
+                        type="button"
+                        aria-label="删除自定义奖品"
+                        onClick={() => deleteCustomReward(item.id)}
+                      >
+                        ×
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              )
+            })}
           </div>
+          <button
+            className="custom-reward-add"
+            type="button"
+            onClick={openCustomRewardPanel}
+          >
+            + AI 鉴定新奖品
+          </button>
         </section>
 
         <section className="coin-log">
@@ -2781,6 +3087,62 @@ function App() {
               </button>
             </div>
           </section>
+        </div>
+      ) : null}
+
+      {isRewardPanelOpen ? (
+        <div className="task-panel-backdrop" role="presentation">
+          <form className="task-panel reward-custom-panel" onSubmit={createCustomReward}>
+            <div className="task-panel-header">
+              <h2>AI 鉴定奖品</h2>
+              <button
+                type="button"
+                onClick={closeCustomRewardPanel}
+                aria-label="关闭"
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="ai-config-note">
+              你只填写奖品内容，金币价格和解锁条件由已接入的 AI 自动评估。
+            </p>
+
+            <label className="field">
+              <span>奖品</span>
+              <input
+                type="text"
+                value={customRewardForm.title}
+                onChange={(event) =>
+                  updateCustomRewardForm('title', event.target.value)
+                }
+                placeholder="例如：周末看电影 / 买一本书"
+              />
+            </label>
+
+            <label className="field">
+              <span>补充说明</span>
+              <textarea
+                value={customRewardForm.note}
+                onChange={(event) =>
+                  updateCustomRewardForm('note', event.target.value)
+                }
+                placeholder="可写时间长度、预算、是否容易沉迷等"
+              />
+            </label>
+
+            {rewardAiError ? (
+              <div className="review-ai-error">{rewardAiError}</div>
+            ) : null}
+
+            <button
+              className="panel-save"
+              type="submit"
+              disabled={rewardAiStatus === 'loading'}
+            >
+              {rewardAiStatus === 'loading' ? 'AI 鉴定中' : '交给 AI 定价'}
+            </button>
+          </form>
         </div>
       ) : null}
 

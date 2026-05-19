@@ -863,7 +863,8 @@ select {
 }
 
 .reward-section-head button,
-.reward-card button {
+.reward-card button,
+.custom-reward-add {
   min-height: 34px;
   border: 0;
   border-radius: 7px;
@@ -875,7 +876,8 @@ select {
 }
 
 .reward-section-head button:disabled,
-.reward-card button:disabled {
+.reward-card button:disabled,
+.panel-save:disabled {
   background: #e5e0d6;
   color: #9a9d96;
   cursor: not-allowed;
@@ -940,6 +942,50 @@ select {
   font-size: 14px;
   line-height: 1.2;
   overflow-wrap: anywhere;
+}
+
+.reward-card small {
+  display: block;
+  margin-top: 5px;
+  color: #68706d;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.reward-card p {
+  margin: 5px 0 0;
+  color: #7b847d;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.reward-card.is-custom {
+  border-color: #cddabf;
+  background: rgba(245, 250, 239, 0.94);
+}
+
+.reward-card-actions {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.reward-card-actions .reward-delete {
+  width: 34px;
+  padding: 0;
+  background: #efe7df;
+  color: #9a3f31;
+  font-size: 20px;
+}
+
+.custom-reward-add {
+  width: 100%;
+  border: 1px dashed #cddabf;
+  background: #e7efe4;
+  color: #203f34;
 }
 
 .coin-event span,
@@ -1447,6 +1493,11 @@ select {
   overflow: auto;
 }
 
+.reward-custom-panel {
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+
 .ai-config-note {
   margin: 0;
   border: 1px solid #d7d1c4;
@@ -1560,7 +1611,8 @@ select {
 }
 
 .field input,
-.field select {
+.field select,
+.field textarea {
   width: 100%;
   min-height: 46px;
   box-sizing: border-box;
@@ -1571,8 +1623,14 @@ select {
   padding: 10px 12px;
 }
 
+.field textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
 .field input:focus,
-.field select:focus {
+.field select:focus,
+.field textarea:focus {
   border-color: #3c6b51;
   outline: 3px solid rgba(60, 107, 81, 0.18);
 }
