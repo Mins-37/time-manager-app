@@ -31,6 +31,7 @@ const TABS = [
 ]
 
 const DATE_RAIL_TOTAL_DAYS = 220
+const DATE_RAIL_PAST_DAYS = 7
 const REVIEW_PAST_WEEKS = 28
 const REVIEW_TOTAL_WEEKS = 60
 const FINAL_BREAK_END = '23:30'
@@ -714,7 +715,7 @@ function App() {
 
   const dateRail = useMemo(() => {
     return Array.from({ length: DATE_RAIL_TOTAL_DAYS }, (_, index) =>
-      shiftDate(getDateString(), index),
+      shiftDate(getDateString(), index - DATE_RAIL_PAST_DAYS),
     )
   }, [])
 
