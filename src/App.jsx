@@ -159,6 +159,11 @@ function timeToMinutes(time) {
   return hours * 60 + minutes
 }
 
+function getCurrentMinute() {
+  const now = new Date()
+  return now.getHours() * 60 + now.getMinutes()
+}
+
 function isValidTimeRange(startTime, endTime) {
   const start = timeToMinutes(startTime)
   const end = timeToMinutes(endTime)
@@ -168,6 +173,13 @@ function isValidTimeRange(startTime, endTime) {
 
 function rangesOverlap(startA, endA, startB, endB) {
   return startA < endB && startB < endA
+}
+
+function minuteInRange(minute, startTime, endTime) {
+  const start = timeToMinutes(startTime)
+  const end = timeToMinutes(endTime)
+
+  return start !== null && end !== null && minute >= start && minute < end
 }
 
 function getBreakRangeAfterSlot(slotId) {
@@ -183,6 +195,21 @@ function getBreakRangeAfterSlot(slotId) {
     start: slot.end,
     end: nextSlot?.start || FINAL_BREAK_END,
   }
+}
+
+function getCurrentSlotId(currentMinute) {
+  for (const slot of TIME_SLOTS) {
+    if (minuteInRange(currentMinute, slot.start, slot.end)) {
+      return slot.id
+    }
+
+    const breakRange = getBreakRangeAfterSlot(slot.id)
+    if (breakRange && minuteInRange(currentMinute, breakRange.start, breakRange.end)) {
+      return slot.id
+    }
+  }
+
+  return null
 }
 
 function createId() {
@@ -455,6 +482,36 @@ function getTaskScheduleLabel(task) {
   return task.slotId ? `第 ${task.slotId} 时段` : '未安排时段'
 }
 
+function getTaskIdentity(task) {
+  return task.renderKey || `${task.itemType}-${task.id}`
+}
+
+function uniqueTasks(tasksToDedupe) {
+  const seenTasks = new Set()
+
+  return tasksToDedupe.filter((task) => {
+    const identity = getTaskIdentity(task)
+    if (seenTasks.has(identity)) {
+      return false
+    }
+
+    seenTasks.add(identity)
+    return true
+  })
+}
+
+function getTasksForSlotAndBreak(dayTasks, slot) {
+  const breakRange = getBreakRangeAfterSlot(slot.id)
+
+  return uniqueTasks(
+    dayTasks.filter(
+      (task) =>
+        taskBelongsToSlot(task, slot) ||
+        (breakRange && taskOverlapsRange(task, breakRange.start, breakRange.end)),
+    ),
+  )
+}
+
 function vibrateOnComplete() {
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     navigator.vibrate(18)
@@ -468,6 +525,7 @@ function App() {
   const [coins, setCoins] = useState(loadCoins)
   const [selectedDate, setSelectedDate] = useState(getDateString)
   const [reviewDate, setReviewDate] = useState(getDateString)
+  const [currentMinute, setCurrentMinute] = useState(getCurrentMinute)
   const [dateRailAnchor] = useState(getDateString)
   const [activeTab, setActiveTab] = useState('plan')
   const [selectedSlotId, setSelectedSlotId] = useState(null)
@@ -501,6 +559,18 @@ function App() {
   useEffect(() => {
     localStorage.setItem(COIN_STORAGE_KEY, String(coins))
   }, [coins])
+
+  useEffect(() => {
+    const updateCurrentMinute = () => setCurrentMinute(getCurrentMinute())
+    const currentTimeTimer = window.setInterval(updateCurrentMinute, 30000)
+
+    document.addEventListener('visibilitychange', updateCurrentMinute)
+
+    return () => {
+      window.clearInterval(currentTimeTimer)
+      document.removeEventListener('visibilitychange', updateCurrentMinute)
+    }
+  }, [])
 
   useEffect(() => {
     if (activeTab !== 'review') {
@@ -631,6 +701,22 @@ function App() {
     () => getTasksForDate(tasks, habits, selectedDate),
     [habits, selectedDate, tasks],
   )
+  const slotTaskStats = useMemo(() => {
+    return Object.fromEntries(
+      TIME_SLOTS.map((slot) => {
+        const slotTasks = getTasksForSlotAndBreak(selectedTasks, slot)
+        const incompleteCount = slotTasks.filter((task) => !task.completed).length
+
+        return [
+          slot.id,
+          {
+            incompleteCount,
+            totalCount: slotTasks.length,
+          },
+        ]
+      }),
+    )
+  }, [selectedTasks])
   const reviewWeeks = useMemo(() => {
     const currentWeekStart = getWeekStart(getDateString())
 
@@ -655,6 +741,8 @@ function App() {
       ? 0
       : Math.round((reviewCompletedCount / reviewTasks.length) * 100)
   const reviewText = dailyReviews[reviewDate]?.note || ''
+  const currentSlotId =
+    selectedDate === getDateString() ? getCurrentSlotId(currentMinute) : null
   const selectedSlot = TIME_SLOTS.find((slot) => slot.id === selectedSlotId)
   const selectedBreakRange = selectedSlotId
     ? getBreakRangeAfterSlot(selectedSlotId)
@@ -1192,7 +1280,10 @@ function App() {
   }
 
   function renderSlotDetail() {
-    const totalSlotItems = selectedSlotTasks.length + selectedBreakTasks.length
+    const totalSlotItems = uniqueTasks([
+      ...selectedSlotTasks,
+      ...selectedBreakTasks,
+    ]).length
 
     return (
       <section className="slot-detail" aria-label="时段任务详情">
@@ -1282,27 +1373,60 @@ function App() {
           {activeTab === 'plan' ? (
             <div className="planner-view">
               <aside className="time-rail" aria-label="时间段">
-                {TIME_SLOTS.map((slot) => (
-                  <button
-                    className={`time-slot ${
-                      selectedSlotId === slot.id ? 'is-selected' : ''
-                    } ${dragState?.overSlotId === slot.id ? 'is-drop-target' : ''
-                    } ${timeRailMode === 'time' ? 'is-time-mode' : ''}`}
-                    key={slot.id}
-                    data-slot-id={slot.id}
-                    type="button"
-                    onClick={() => handleSlotClick(slot.id)}
-                    onPointerDown={handleSlotPointerDown}
-                    onPointerLeave={handleSlotPointerEnd}
-                    onPointerUp={handleSlotPointerEnd}
-                  >
-                    {timeRailMode === 'time'
-                      ? slot.timeLabel.split('\n').map((line) => (
-                          <span key={line}>{line}</span>
-                        ))
-                      : slot.label}
-                  </button>
-                ))}
+                {TIME_SLOTS.map((slot) => {
+                  const taskStats = slotTaskStats[slot.id] || {
+                    incompleteCount: 0,
+                    totalCount: 0,
+                  }
+
+                  return (
+                    <button
+                      className={`time-slot ${
+                        selectedSlotId === slot.id ? 'is-selected' : ''
+                      } ${currentSlotId === slot.id ? 'is-current' : ''} ${
+                        dragState?.overSlotId === slot.id ? 'is-drop-target' : ''
+                      } ${timeRailMode === 'time' ? 'is-time-mode' : ''}`}
+                      key={slot.id}
+                      data-slot-id={slot.id}
+                      type="button"
+                      onClick={() => handleSlotClick(slot.id)}
+                      onPointerDown={handleSlotPointerDown}
+                      onPointerLeave={handleSlotPointerEnd}
+                      onPointerUp={handleSlotPointerEnd}
+                    >
+                      {currentSlotId === slot.id ? (
+                        <span className="time-current-arrow" aria-hidden="true">
+                          ▶
+                        </span>
+                      ) : null}
+                      {taskStats.totalCount > 0 ? (
+                        <span
+                          className={`time-task-count ${
+                            taskStats.incompleteCount === 0 ? 'is-complete' : ''
+                          }`}
+                          aria-label={
+                            taskStats.incompleteCount === 0
+                              ? '该时段任务已完成'
+                              : `该时段还有 ${taskStats.incompleteCount} 个未完成任务`
+                          }
+                        >
+                          {taskStats.incompleteCount === 0
+                            ? '✓'
+                            : taskStats.incompleteCount}
+                        </span>
+                      ) : null}
+                      <span className="time-slot-main">
+                        {timeRailMode === 'time'
+                          ? slot.timeLabel.split('\n').map((line) => (
+                              <span className="time-slot-line" key={line}>
+                                {line}
+                              </span>
+                            ))
+                          : slot.label}
+                      </span>
+                    </button>
+                  )
+                })}
               </aside>
 
               {selectedSlotId ? (

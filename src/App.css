@@ -152,6 +152,7 @@ select {
 }
 
 .time-slot {
+  position: relative;
   display: grid;
   place-items: center;
   border: 0;
@@ -163,6 +164,11 @@ select {
   cursor: pointer;
   user-select: none;
   touch-action: manipulation;
+}
+
+.time-slot-main {
+  display: grid;
+  place-items: center;
 }
 
 .time-slot:hover {
@@ -179,14 +185,51 @@ select {
   color: #fffdfa;
 }
 
+.time-slot.is-current {
+  background: rgba(244, 189, 162, 0.26);
+}
+
 .time-slot.is-time-mode {
   gap: 2px;
   font-size: 13px;
   line-height: 1.12;
 }
 
-.time-slot.is-time-mode span {
+.time-slot-line {
   display: block;
+}
+
+.time-current-arrow {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  color: #9a3f31;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.time-task-count {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #fffdfa;
+  color: #203f34;
+  border: 1px solid rgba(49, 91, 67, 0.28);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.time-task-count.is-complete {
+  background: #315b43;
+  border-color: #315b43;
+  color: #fffdfa;
 }
 
 .quadrant-board {
